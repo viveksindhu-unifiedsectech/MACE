@@ -1,10 +1,26 @@
-# MACE — Final Demo-Ready Bundle
-**UnifiedSec Technologies · 2026-05-28**
+# MACE — UnifiedSec Technologies
+**A one-stop cybersecurity platform: threat correlation + secure file encryption, access control, redaction, AI safeguards, and cross-matter conflict detection. Patent-pending.**
 
-This folder contains everything you need to demo MACE to investors,
-acquirers, banks, and customers. Total size: ~16 MB.
+Everything you need to demo, test, and deploy MACE — for investors, acquirers,
+banks, and customers.
 
-## Folder layout
+## 🧭 Where to go (start here)
+
+| I want to… | Go to |
+|---|---|
+| **See it work in 60s (no setup)** | `01_Source/mace_platform/backend/scripts/secure_files_demo.py` — run it (see "Run it locally" below) |
+| **Run the app locally** | ["Run it locally — step by step"](#run-it-locally--step-by-step) below |
+| **Run the tests (3,287)** | `01_Source/mace_platform/backend/tests/` |
+| **Read the source of the secure feature** | `01_Source/mace_platform/backend/app/secure/` |
+| **Demo & troubleshooting guide** | `04_How_To_Demo/SECURE_FILES_DEMO.md` · `USER_GUIDE_AND_TROUBLESHOOTING.md` |
+| **How to use the AI (Macey)** | `04_How_To_Demo/AI_GUARD_HOW_TO.md` |
+| **Set up AWS / what to send me** | `03_Documents/MACE_Cloud_Setup_And_Credentials_Guide.md` + `backend/.env.cloud.template` |
+| **Make Macey your own AI model** | `03_Documents/MACE_Macey_Custom_AI_Guide.md` |
+| **Patents** | `03_Documents/MACE_Patent_Application_*.docx` + `MACE_Patent_Addendum_SecureFiles.docx` (claims 31–40) |
+| **Investor decks** | `03_Documents/MACE_Investor_Deck_v3.pptx` · `MACE_SecureFiles_Deck_v1.pptx` |
+| **The website** | `05_Website/index.html` |
+
+## 📂 Folder layout
 
 ```
 MACE_FINAL/
