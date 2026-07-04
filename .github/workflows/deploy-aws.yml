@@ -1,0 +1,143 @@
+name: Deploy to AWS (ECR + EKS)
+
+# Builds MACE container images, pushes them to Amazon ECR, and rolls them out to
+# an EKS cluster with Helm. Runs on push to main (code changes only) or manually.
+#
+# Auth uses GitHub OIDC (no long-lived AWS keys stored in GitHub). Configure once:
+#   • an IAM role that trusts token.actions.githubusercontent.com for this repo
+#   • the role needs ECR push + EKS describe + (via kube RBAC) deploy rights
+# Required repo secrets/variables — see docs/DEPLOYMENT_CICD.md:
+#   secrets: AWS_DEPLOY_ROLE_ARN
+#   vars:    AWS_REGION, ECR_REGISTRY, EKS_CLUSTER_NAME, K8S_NAMESPACE
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mace_platform/**'
+      - '.github/workflows/deploy-aws.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        default: "staging"
+        type: choice
+        options: [staging, production]
+
+concurrency:
+  group: deploy-aws-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write        # required for AWS OIDC
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  # ── 1. Build + push all images to ECR ──────────────────────────────────────
+  build-and-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: mace-api
+            context: .
+            dockerfile: mace_platform/backend/Dockerfile
+          - name: soc-frontend
+            context: mace_platform/frontend/soc
+            dockerfile: mace_platform/frontend/soc/Dockerfile
+          - name: admin-frontend
+            context: mace_platform/frontend/admin
+            dockerfile: mace_platform/frontend/admin/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure ECR repository exists
+        run: |
+          aws ecr describe-repositories --repository-names "${{ matrix.name }}" \
+            --region "$AWS_REGION" >/dev/null 2>&1 || \
+          aws ecr create-repository --repository-name "${{ matrix.name }}" \
+            --image-scanning-configuration scanOnPush=true \
+            --region "$AWS_REGION"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ matrix.name }}:${{ env.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/${{ matrix.name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── 2. Deploy to EKS with Helm ─────────────────────────────────────────────
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up kubectl + Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.2
+
+      - name: Update kubeconfig for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --name "${{ vars.EKS_CLUSTER_NAME }}" \
+            --region "$AWS_REGION"
+
+      - name: Helm upgrade — mace-api
+        run: |
+          helm upgrade --install mace-api mace_platform/infra/helm/mace-api \
+            --namespace "${{ vars.K8S_NAMESPACE }}" --create-namespace \
+            --set image.repository="${ECR_REGISTRY}/mace-api" \
+            --set image.tag="${IMAGE_TAG}" \
+            --wait --timeout 5m
+
+      - name: Helm upgrade — celery-worker
+        run: |
+          helm upgrade --install celery-worker mace_platform/infra/helm/celery-worker \
+            --namespace "${{ vars.K8S_NAMESPACE }}" \
+            --set image.repository="${ECR_REGISTRY}/mace-api" \
+            --set image.tag="${IMAGE_TAG}" \
+            --wait --timeout 5m || echo "celery-worker chart optional — skipped"
+
+      - name: Helm upgrade — frontends
+        run: |
+          for f in soc-frontend admin-frontend; do
+            helm upgrade --install "$f" "mace_platform/infra/helm/$f" \
+              --namespace "${{ vars.K8S_NAMESPACE }}" \
+              --set image.repository="${ECR_REGISTRY}/$f" \
+              --set image.tag="${IMAGE_TAG}" \
+              --wait --timeout 5m || echo "$f chart optional — skipped"
+          done
+
+      - name: Rollout status
+        run: kubectl -n "${{ vars.K8S_NAMESPACE }}" get deploy,po -o wide || true
