@@ -50,3 +50,13 @@ Thumbs.db
 .~lock.*
 *.tmp
 lu*.tmp
+
+# ── Kept on disk but NOT in the repo (business/marketing/binaries) ──
+02_Built_Apps/
+03_Documents/
+05_Website/
+01_Source/
+
+# ── Tooling / local agent settings ──
+.claude/
+.DS_Store
