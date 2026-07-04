@@ -1,0 +1,5 @@
+# Top-level wrapper so the stack can be launched from the repo root:
+#   docker compose up -d --build
+# Delegates to the canonical compose file under mace_platform/infra/.
+include:
+  - mace_platform/infra/docker-compose.local.yml

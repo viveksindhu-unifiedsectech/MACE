@@ -1,0 +1,75 @@
+replicaCount: 2
+image:
+  repository: ""  # Set to admin ECR URL
+  tag: "latest"
+  pullPolicy: IfNotPresent
+fullnameOverride: "admin-frontend"
+service:
+  type: ClusterIP
+  port: 80
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/certificate-arn: ""
+    alb.ingress.kubernetes.io/wafv2-acl-arn: ""
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /
+  hosts:
+    - host: admin.unifiedsec.com
+      paths:
+        - path: /
+          pathType: Prefix
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits:   { cpu: 200m, memory: 128Mi }
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+nginxConfig: |
+  server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+    location / { try_files $uri $uri/ /index.html; }
+    location /api/ {
+      proxy_pass http://mace-api:8080;
+      proxy_http_version 1.1;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+      proxy_read_timeout 300;
+    }
+    location /api/v1/correlate/ws/ {
+      proxy_pass http://mace-api:8080;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_set_header Host $host;
+      proxy_read_timeout 86400;
+    }
+    location ~* \.(js|css|png|jpg|ico|woff2)$ {
+      expires 1y;
+      add_header Cache-Control "public, immutable";
+    }
+    add_header X-Content-Type-Options nosniff;
+    add_header X-Frame-Options SAMEORIGIN;
+    add_header X-XSS-Protection "1; mode=block";
+  }
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app: admin-frontend

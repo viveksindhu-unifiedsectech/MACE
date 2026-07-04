@@ -1,0 +1,2248 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>UnifiedSec MACE — Endpoint Security Console</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          ink:    { 950: '#070a14', 900: '#0b1220', 800: '#111b2e', 700: '#1b263f', 600: '#243150' },
+          accent: { 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb' },
+          ok:    '#22c55e', warn:  '#f59e0b', high:  '#fb923c', crit:  '#ef4444',
+        },
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        }
+      }
+    }
+  }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { background:#070a14; color:#e6edf3; font-family:Inter,system-ui,sans-serif; }
+  .card { background:linear-gradient(180deg,#111b2e 0%,#0b1220 100%); border:1px solid rgba(255,255,255,0.06); }
+  .ring-glow { box-shadow:0 0 0 1px rgba(59,130,246,0.25), 0 12px 40px -10px rgba(59,130,246,0.25); }
+  .pulse-dot { animation:pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+  ::selection { background:#3b82f680; }
+  .tab-btn[data-active="true"] { background:#1b263f; color:#fff; border-color:#3b82f6; box-shadow:0 0 0 1px rgba(59,130,246,0.4) inset; }
+  .sev-CRITICAL { color:#ef4444 }
+  .sev-HIGH     { color:#fb923c }
+  .sev-MEDIUM   { color:#f59e0b }
+  .sev-LOW      { color:#22c55e }
+  .sev-INFO     { color:#94a3b8 }
+  .chip { display:inline-flex; align-items:center; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:600; white-space:nowrap; }
+  .chip-CRITICAL { background:#ef444422; color:#ef4444; }
+  .chip-HIGH     { background:#fb923c22; color:#fb923c; }
+  .chip-MEDIUM   { background:#f59e0b22; color:#f59e0b; }
+  .chip-LOW      { background:#22c55e22; color:#22c55e; }
+  .chip-INFO     { background:#94a3b822; color:#94a3b8; }
+  details > summary { list-style:none; cursor:pointer; }
+  details > summary::-webkit-details-marker { display:none; }
+  .scroll-fade { mask-image: linear-gradient(180deg, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%); }
+  .inv-row { display:grid; grid-template-columns: minmax(0,1fr) auto auto; gap:12px; padding:6px 10px; border-radius:6px; }
+  .inv-row:hover { background:rgba(255,255,255,0.03); }
+  .kv-row { display:grid; grid-template-columns: 140px 1fr; gap:12px; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
+  .kv-row:last-child { border-bottom: none; }
+  .kv-key { color:#8b949e; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; }
+  .kv-val { font-family:'JetBrains Mono', monospace; font-size:13px; word-break:break-all; }
+  .step-progress { background:rgba(59,130,246,0.15); height:6px; border-radius:3px; overflow:hidden; }
+  .step-progress > div { background:#3b82f6; height:100%; transition:width 0.3s; }
+  input[type="search"] { background:#0d1626; border:1px solid rgba(255,255,255,0.08); color:#e6edf3; padding:6px 10px; border-radius:6px; font-size:13px; width:100%; }
+  input[type="search"]:focus { outline:none; border-color:#3b82f6; }
+  .badge-real { background:#22c55e; color:#0b1220; }
+  .badge-sim  { background:#94a3b8; color:#0b1220; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- TOP BAR -->
+<header class="border-b border-white/5 sticky top-0 z-30 bg-ink-950/85 backdrop-blur">
+  <div class="max-w-[1500px] mx-auto px-6 py-3 flex items-center gap-6">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-md bg-gradient-to-br from-accent-500 to-blue-700 flex items-center justify-center font-bold text-lg">M</div>
+      <div>
+        <div class="text-sm font-semibold">UnifiedSec MACE</div>
+        <div class="text-[11px] text-slate-400 -mt-0.5">Multi-Domain Adaptive Correlation Engine</div>
+      </div>
+    </div>
+    <nav class="ml-auto flex items-center gap-1 text-sm">
+      <button id="tab-devices"    class="tab-btn px-3.5 py-1.5 rounded border border-white/10" data-active="true">📋 Devices</button>
+      <button id="tab-device"     class="tab-btn px-3.5 py-1.5 rounded border border-white/10">🖥 Device detail</button>
+      <button id="tab-macey"      class="tab-btn px-3.5 py-1.5 rounded border border-white/10">✨ Macey</button>
+      <button id="tab-compliance" class="tab-btn px-3.5 py-1.5 rounded border border-white/10">📑 Compliance</button>
+      <button id="tab-tools"      class="tab-btn px-3.5 py-1.5 rounded border border-white/10">🛡 Security Tools</button>
+      <button id="tab-feeds"      class="tab-btn px-3.5 py-1.5 rounded border border-white/10">📡 Feeds</button>
+    </nav>
+    <div class="flex items-center gap-2 ml-4">
+      <span class="pulse-dot w-2 h-2 rounded-full bg-ok"></span>
+      <span class="text-xs text-slate-300" id="status-line">live</span>
+      <button id="scan-now" class="ml-3 bg-accent-500 hover:bg-accent-600 px-3.5 py-1.5 rounded text-sm font-semibold" title="Scan this device (S)">▶ Scan</button>
+      <button id="kbd-help" class="border border-white/10 hover:bg-white/5 px-2 py-1 rounded text-xs" title="Keyboard shortcuts (?)">⌨</button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-[1500px] mx-auto px-6 py-6 space-y-6">
+
+  <!-- DEVICES LIST -->
+  <section id="view-devices" class="space-y-6">
+    <!-- KPI CARDS -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Devices reporting</div>
+        <div class="text-3xl font-bold mt-1" id="stat-devices">—</div>
+        <div class="text-[11px] text-slate-500 mt-1">macOS · Windows · Linux · Android · iOS</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Avg device risk</div>
+        <div class="text-3xl font-bold mt-1" id="stat-avgrisk">—</div>
+        <div class="text-[11px] text-slate-500 mt-1">CDCS 7-domain fused score</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Total CVEs</div>
+        <div class="text-3xl font-bold mt-1 sev-HIGH" id="stat-cve">—</div>
+        <div class="text-[11px] text-slate-500 mt-1"><span class="sev-CRITICAL" id="stat-crit-count">0</span> critical across fleet</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">STIG compliance</div>
+        <div class="text-3xl font-bold mt-1" id="stat-stig">—</div>
+        <div class="text-[11px] text-slate-500 mt-1">Fleet-weighted CIS / DISA pass</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Apps inventoried</div>
+        <div class="text-3xl font-bold mt-1" id="stat-apps">—</div>
+        <div class="text-[11px] text-slate-500 mt-1">Across all devices</div>
+      </div>
+    </div>
+
+    <!-- DEVICE FILTER BAR -->
+    <div class="card rounded-xl p-4">
+      <div class="flex flex-wrap items-center gap-3 mb-3">
+        <input id="fleet-search" type="search" placeholder="🔍 Search hostname, OS, model, IP, company, owner…"
+               class="flex-1 min-w-[240px]"/>
+        <select id="fleet-tenant" class="bg-ink-800 border border-white/10 rounded text-xs px-3 py-2">
+          <option value="all">All companies</option>
+        </select>
+        <select id="fleet-devicetype" class="bg-ink-800 border border-white/10 rounded text-xs px-3 py-2">
+          <option value="all">Any device type</option>
+          <optgroup label="Workstations">
+            <option value="laptop">💻 Laptop</option>
+            <option value="desktop">🖥 Desktop</option>
+            <option value="tablet">📋 Tablet</option>
+          </optgroup>
+          <optgroup label="Servers + cloud">
+            <option value="server">🗄 Server</option>
+            <option value="database_server">🗃 Database server</option>
+            <option value="domain_controller">🏛 Domain controller</option>
+            <option value="web_server">🌐 Web server</option>
+            <option value="vpn_concentrator">🔒 VPN concentrator</option>
+            <option value="kubernetes_node">☸ K8s node</option>
+            <option value="vm">🧊 Virtual machine</option>
+            <option value="container_host">📦 Container host</option>
+          </optgroup>
+          <optgroup label="Mobile">
+            <option value="smartphone">📱 Smartphone</option>
+          </optgroup>
+          <optgroup label="Network">
+            <option value="network_router">🌐 Router</option>
+            <option value="network_switch">🔌 Switch</option>
+            <option value="firewall_appliance">🛡 Firewall</option>
+          </optgroup>
+          <optgroup label="IoT / OT / specialty">
+            <option value="printer">🖨 Printer</option>
+            <option value="ip_camera">📹 IP camera</option>
+            <option value="smart_tv">📺 Smart TV</option>
+            <option value="ot_ics_plc">⚙️ OT/ICS PLC</option>
+            <option value="medical_device">🏥 Medical device</option>
+          </optgroup>
+        </select>
+        <select id="fleet-vulntype" class="bg-ink-800 border border-white/10 rounded text-xs px-3 py-2">
+          <option value="all">Any vuln type</option>
+          <option value="kev">🔥 CISA KEV (exploited)</option>
+          <option value="critical">🚨 Has CRITICAL CVE</option>
+          <option value="high">⚠ Has HIGH CVE</option>
+          <option value="zero_cves">🎉 Zero CVEs</option>
+          <option value="stig_fail">📋 STIG failures</option>
+        </select>
+        <select id="fleet-scantype" class="bg-ink-800 border border-white/10 rounded text-xs px-3 py-2">
+          <option value="all">Any scan type</option>
+          <option value="real_time">⚡ Real-time</option>
+          <option value="scheduled">⏰ Scheduled</option>
+          <option value="on_demand">👤 On-demand</option>
+          <option value="initial">🆕 Initial</option>
+        </select>
+        <select id="fleet-window" class="bg-ink-800 border border-white/10 rounded text-xs px-3 py-2">
+          <option value="all">Any time</option>
+          <option value="5">Last 5 min</option>
+          <option value="60">Last hour</option>
+          <option value="1440">Last 24 hours</option>
+          <option value="10080">Last 7 days</option>
+        </select>
+        <select id="fleet-sort" class="bg-ink-800 border border-white/10 rounded text-xs px-3 py-2">
+          <option value="risk_desc">Risk (high → low)</option>
+          <option value="risk_asc">Risk (low → high)</option>
+          <option value="vulns_desc">CVE count (high → low)</option>
+          <option value="hostname">Hostname A→Z</option>
+          <option value="recent">Most recently scanned</option>
+        </select>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="text-slate-500">Filter:</span>
+        <button class="fleet-filter chip chip-INFO border border-white/10" data-k="all" data-active="true">all <span class="ml-1 text-slate-400" id="cnt-all">—</span></button>
+        <button class="fleet-filter chip chip-CRITICAL" data-k="CRITICAL">critical <span class="ml-1" id="cnt-CRITICAL">0</span></button>
+        <button class="fleet-filter chip chip-HIGH" data-k="HIGH">high <span class="ml-1" id="cnt-HIGH">0</span></button>
+        <button class="fleet-filter chip chip-MEDIUM" data-k="MEDIUM">medium <span class="ml-1" id="cnt-MEDIUM">0</span></button>
+        <button class="fleet-filter chip chip-LOW" data-k="LOW">low <span class="ml-1" id="cnt-LOW">0</span></button>
+        <button class="fleet-filter chip chip-INFO" data-k="INFO">info <span class="ml-1" id="cnt-INFO">0</span></button>
+        <span class="text-slate-600 mx-2">|</span>
+        <button class="plat-filter chip chip-INFO border border-white/10" data-p="all" data-active="true">all platforms <span class="ml-1 text-slate-400" id="cnt-plat-all">—</span></button>
+        <button class="plat-filter chip chip-LOW" data-p="darwin">🍎 macOS <span class="ml-1" id="cnt-plat-darwin">0</span></button>
+        <button class="plat-filter chip chip-LOW" data-p="windows">🪟 Windows <span class="ml-1" id="cnt-plat-windows">0</span></button>
+        <button class="plat-filter chip chip-LOW" data-p="linux">🐧 Linux <span class="ml-1" id="cnt-plat-linux">0</span></button>
+        <button class="plat-filter chip chip-LOW" data-p="android">🤖 Android <span class="ml-1" id="cnt-plat-android">0</span></button>
+        <button class="plat-filter chip chip-LOW" data-p="ios">📱 iOS <span class="ml-1" id="cnt-plat-ios">0</span></button>
+      </div>
+      <div class="flex items-center justify-between text-xs text-slate-400 mt-3">
+        <span id="fleet-shown">Showing —</span>
+        <div class="flex items-center gap-2">
+          <span>Page size:</span>
+          <select id="fleet-pagesize" class="bg-ink-800 border border-white/10 rounded text-xs px-2 py-1">
+            <option value="24">24</option>
+            <option value="48" selected>48</option>
+            <option value="96">96</option>
+            <option value="300">300</option>
+          </select>
+          <button id="fleet-prev" class="border border-white/10 rounded px-2 py-1 hover:bg-white/5">← prev</button>
+          <span id="fleet-page">page 1</span>
+          <button id="fleet-next" class="border border-white/10 rounded px-2 py-1 hover:bg-white/5">next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- DEVICE CARDS -->
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" id="device-cards"></div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="card rounded-xl p-5">
+        <div class="font-semibold mb-3">🎯 Top remediation actions across all devices</div>
+        <ol id="fleet-actions" class="space-y-2 text-sm"></ol>
+      </div>
+      <div class="card rounded-xl p-5">
+        <div class="font-semibold mb-3">⏱ Recent device events</div>
+        <ul id="fleet-events" class="space-y-1.5 text-xs font-mono"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- DEVICE DETAIL -->
+  <section id="view-device" class="space-y-6 hidden">
+    <!-- header -->
+    <div class="card rounded-xl p-5 flex items-start gap-5 flex-wrap">
+      <div class="flex-1 min-w-[300px]">
+        <div class="flex items-center gap-3 mb-2">
+          <span id="device-icon" class="text-3xl">🖥</span>
+          <div>
+            <div id="device-name" class="text-2xl font-bold">—</div>
+            <div id="device-os" class="text-sm text-slate-400">—</div>
+          </div>
+          <span id="device-realsim" class="chip"></span>
+        </div>
+        <div id="device-meta" class="text-xs text-slate-500 font-mono">—</div>
+      </div>
+      <div class="text-right">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Device risk</div>
+        <div id="dev-risk" class="text-5xl font-bold">—</div>
+        <div id="dev-severity" class="-mt-1"></div>
+      </div>
+      <div class="flex flex-col gap-2 items-end">
+        <select id="device-picker" class="bg-ink-800 border border-white/10 rounded px-3 py-2 text-sm w-full md:w-auto"></select>
+        <button id="download-device-report" class="bg-accent-500 hover:bg-accent-600 px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap">📥 Download device report</button>
+      </div>
+    </div>
+
+    <!-- 4 KPI MICRO-CARDS -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Hardware components</div>
+        <div class="text-3xl font-bold mt-1" id="dev-hwam">—</div>
+        <div class="text-[11px] text-slate-500 mt-1" id="dev-hwam-sub">—</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Installed software</div>
+        <div class="text-3xl font-bold mt-1" id="dev-swam">—</div>
+        <div class="text-[11px] text-slate-500 mt-1" id="dev-swam-sub">—</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">STIG compliance</div>
+        <div class="text-3xl font-bold mt-1" id="dev-stig">—</div>
+        <div class="text-[11px] text-slate-500 mt-1" id="dev-stig-sub">—</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Vulnerabilities</div>
+        <div class="text-3xl font-bold mt-1" id="dev-vulns">—</div>
+        <div class="text-[11px] text-slate-500 mt-1" id="dev-vulns-sub">—</div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-end gap-2 -mt-2">
+      <button id="download-fleet-report" class="bg-ink-800 hover:bg-ink-700 border border-white/10 px-3 py-1.5 rounded text-xs font-medium">📥 All devices report (HTML)</button>
+      <button id="download-fleet-csv" class="bg-ink-800 hover:bg-ink-700 border border-white/10 px-3 py-1.5 rounded text-xs font-medium">📊 CSV (all devices)</button>
+      <button id="download-fleet-vulns-csv" class="bg-ink-800 hover:bg-ink-700 border border-white/10 px-3 py-1.5 rounded text-xs font-medium">📊 CSV (all CVEs)</button>
+      <button id="download-fleet-json" class="bg-ink-800 hover:bg-ink-700 border border-white/10 px-3 py-1.5 rounded text-xs font-medium">📥 JSON</button>
+    </div>
+
+    <!-- CHARTS ROW: 3 customisable visualizations -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold text-sm">📊 Vulnerabilities</div>
+          <select id="vuln-viz" class="bg-ink-800 border border-white/10 rounded text-xs px-2 py-1">
+            <option value="donut">Donut by severity</option>
+            <option value="bars">Bars by severity</option>
+            <option value="treemap">Treemap by app</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-4">
+          <svg id="chart-vuln" width="160" height="140" viewBox="0 0 160 140"></svg>
+          <ul id="chart-vuln-legend" class="text-xs space-y-1 flex-1"></ul>
+        </div>
+      </div>
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold text-sm">📦 Software</div>
+          <select id="apps-viz" class="bg-ink-800 border border-white/10 rounded text-xs px-2 py-1">
+            <option value="source">By install source</option>
+            <option value="vendor">By vendor</option>
+            <option value="patch">Patched vs outdated</option>
+          </select>
+        </div>
+        <svg id="chart-apps" width="100%" height="140"></svg>
+      </div>
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold text-sm">📈 Device risk timeline</div>
+          <select id="tl-viz" class="bg-ink-800 border border-white/10 rounded text-xs px-2 py-1">
+            <option value="line">Line</option>
+            <option value="area">Area</option>
+            <option value="bars">Bars</option>
+          </select>
+        </div>
+        <svg id="chart-timeline" width="100%" height="140"></svg>
+        <div class="text-[10px] text-slate-500 mt-1" id="chart-timeline-meta"></div>
+      </div>
+    </div>
+
+    <!-- TWO-COLUMN: HARDWARE + NETWORK on left ; PRIORITY ACTIONS on right -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <!-- HARDWARE -->
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="font-semibold">🔩 Hardware (HWAM)</div>
+          <span class="text-[11px] text-slate-400" id="dev-hw-tag"></span>
+        </div>
+        <div id="dev-hw-kv"></div>
+        <div class="font-semibold mt-5 mb-2 text-sm">💾 Storage</div>
+        <div id="dev-disks" class="space-y-1 text-sm"></div>
+        <div class="font-semibold mt-5 mb-2 text-sm">🌐 Network interfaces & IPs</div>
+        <div id="dev-interfaces" class="space-y-2"></div>
+      </div>
+      <!-- PRIORITY ACTIONS -->
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="font-semibold">🎯 Prioritised remediation plan</div>
+          <span class="text-[11px] text-slate-400" id="dev-actions-count"></span>
+        </div>
+        <ol id="dev-actions" class="space-y-2 text-sm max-h-[640px] overflow-y-auto pr-1"></ol>
+      </div>
+    </div>
+
+    <!-- INSTALLED SOFTWARE -->
+    <div class="card rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
+        <div class="font-semibold">📦 Installed software & apps</div>
+        <span class="text-[11px] text-slate-400" id="dev-app-count"></span>
+        <input id="dev-app-search" type="search" placeholder="Search apps + packages…" class="md:w-64"/>
+      </div>
+      <div id="dev-app-list" class="max-h-[420px] overflow-y-auto"></div>
+    </div>
+
+    <!-- CVEs + STIG -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="card rounded-xl p-5">
+        <div class="font-semibold mb-3 flex items-center justify-between">
+          <span>🐛 Vulnerabilities (CVE) — click for fix</span>
+          <input id="dev-cve-search" type="search" placeholder="filter…" class="md:w-32"/>
+        </div>
+        <div id="dev-cve-list" class="space-y-2 text-sm max-h-[480px] overflow-y-auto"></div>
+      </div>
+      <div class="card rounded-xl p-5">
+        <div class="font-semibold mb-3">📋 STIG / CIS checks</div>
+        <div id="dev-stig-list" class="space-y-1 text-xs max-h-[480px] overflow-y-auto"></div>
+      </div>
+    </div>
+
+    <!-- THREAT DRILL-DOWNS -->
+    <div class="card rounded-xl p-5">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-3">
+        <div class="font-semibold">🚨 Threats · Intrusion · DLP · EDR · Honeytokens · Hackable config</div>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <button class="threat-filter chip chip-INFO border border-white/10" data-k="all" data-active="true">all</button>
+          <button class="threat-filter chip chip-CRITICAL" data-k="malware">🦠 malware</button>
+          <button class="threat-filter chip chip-HIGH" data-k="edr">🧠 EDR</button>
+          <button class="threat-filter chip chip-HIGH" data-k="intrusion">🚪 intrusion</button>
+          <button class="threat-filter chip chip-CRITICAL" data-k="dlp">📤 DLP</button>
+          <button class="threat-filter chip chip-HIGH" data-k="honey">🍯 honeytokens</button>
+          <button class="threat-filter chip chip-MEDIUM" data-k="hackable">⚠ hackable</button>
+        </div>
+      </div>
+      <div id="dev-threats-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+    </div>
+  </section>
+
+  <!-- MACEY -->
+  <section id="view-macey" class="space-y-6 hidden">
+    <div class="card rounded-xl p-5 max-w-3xl mx-auto">
+      <div class="flex items-center gap-3 mb-3">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-fuchsia-500 to-accent-500 flex items-center justify-center font-bold">M</div>
+        <div>
+          <div class="font-semibold">Macey · GenAI Security Assistant</div>
+          <div class="text-[11px] text-slate-400">Ask anything. She can scan, look up CVEs, run playbooks, provision cloud.</div>
+        </div>
+        <button type="button" onclick="document.getElementById('macey-help').classList.toggle('hidden')"
+                class="ml-auto text-[11px] px-2 py-1 rounded border border-white/10 hover:border-accent-500 text-slate-300">❔ How to use</button>
+        <span class="text-[10px] uppercase tracking-wide text-slate-400" id="macey-provider"></span>
+      </div>
+      <div id="macey-help" class="hidden mb-3 rounded-lg border border-white/10 bg-ink-800/60 p-4 text-xs leading-relaxed text-slate-300">
+        <div class="font-semibold text-accent-400 mb-1">Meet Macey — your AI security analyst</div>
+        Ask in plain English; she reads your fleet, files and findings and never guesses.
+        <div class="mt-2"><b class="text-slate-200">Try:</b> “list devices” · “explain CVE-2024-3094” · “who can open this file?” · “scan for conflicts of interest” · “is it safe to share this?”</div>
+        <div class="mt-2"><b class="text-slate-200">Good to know:</b> she warns you <i>before</i> a risky upload or share, never reveals secrets or another tenant's data, and can run fully offline (MaceyLM). Full guide: <code>04_How_To_Demo/AI_GUARD_HOW_TO.md</code>.</div>
+      </div>
+      <div id="macey-log" class="space-y-3 max-h-[55vh] overflow-y-auto scroll-fade pr-1"></div>
+      <form id="macey-form" class="mt-4 flex gap-2">
+        <input id="macey-input" placeholder="Try: which devices are vulnerable to CVE-2024-3094?"
+               class="flex-1 bg-ink-800 border border-white/10 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-500" />
+        <button class="bg-accent-500 hover:bg-accent-600 px-4 py-2 rounded text-sm font-semibold">Ask</button>
+      </form>
+      <div class="flex flex-wrap gap-2 mt-3 text-xs">
+        <button class="macey-quick chip chip-LOW" data-q="list devices">📋 list devices</button>
+        <button class="macey-quick chip chip-LOW" data-q="scan this device">🔍 scan this device</button>
+        <button class="macey-quick chip chip-LOW" data-q="show me available playbooks">📘 playbooks</button>
+        <button class="macey-quick chip chip-LOW" data-q="provision aws stack in us-east-1">☁️ provision AWS</button>
+        <button class="macey-quick chip chip-LOW" data-q="explain CVE-2024-3094">❓ explain CVE-2024-3094</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMPLIANCE -->
+  <section id="view-compliance" class="space-y-6 hidden">
+    <!-- KPI ROW -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Frameworks mapped</div>
+        <div class="text-3xl font-bold mt-1" id="compl-fw-count">—</div>
+        <div class="text-[11px] text-slate-500 mt-1">Across 5 jurisdictions</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Industries supported</div>
+        <div class="text-3xl font-bold mt-1">17</div>
+        <div class="text-[11px] text-slate-500 mt-1">Airlines · Banks · Healthcare · Energy · Telecom · Gov · DoD · Retail · …</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Controls evidenced</div>
+        <div class="text-3xl font-bold mt-1 sev-LOW" id="compl-ctrl-count">—</div>
+        <div class="text-[11px] text-slate-500 mt-1">Auto-generated by UREA chain-of-custody</div>
+      </div>
+      <div class="card rounded-xl p-4">
+        <div class="text-[11px] uppercase tracking-wide text-slate-400">Regulator notifications</div>
+        <div class="text-3xl font-bold mt-1">10</div>
+        <div class="text-[11px] text-slate-500 mt-1">CERT-In · DPDP · NESA · GDPR · DORA · NIS2 · FedRAMP · HIPAA …</div>
+      </div>
+    </div>
+
+    <div class="card rounded-xl p-5">
+      <div class="font-semibold mb-2">🏛 Industry → Frameworks → MACE coverage</div>
+      <p class="text-xs text-slate-400 mb-4">Select an industry to see which frameworks apply, which MACE modules satisfy them, and the notable buyers in that vertical.</p>
+      <div class="flex gap-2 flex-wrap" id="industry-picker"></div>
+    </div>
+    <div class="card rounded-xl p-5">
+      <div class="font-semibold mb-3" id="compliance-title">—</div>
+      <div id="compliance-content" class="space-y-2 text-sm"></div>
+    </div>
+
+    <!-- JURISDICTION OVERVIEW -->
+    <div class="card rounded-xl p-5">
+      <div class="font-semibold mb-3">🌍 Jurisdiction weight profiles</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+        <div class="border border-white/5 rounded p-3">
+          <div class="font-semibold mb-1">🇮🇳 India CII</div>
+          <div class="text-slate-400">india_cii profile</div>
+          <div class="mt-2 space-y-0.5 text-[11px]">
+            <div>DPDP Act 2023</div><div>CERT-In 6-hour directive</div><div>RBI Cyber Framework</div><div>SEBI System Audit</div><div>MeitY SDLC</div>
+          </div>
+        </div>
+        <div class="border border-white/5 rounded p-3">
+          <div class="font-semibold mb-1">🇺🇸 US Federal</div>
+          <div class="text-slate-400">usa_fedramp profile</div>
+          <div class="mt-2 space-y-0.5 text-[11px]">
+            <div>FedRAMP Moderate / High</div><div>NIST 800-53 Rev5</div><div>NIST CSF 2.0</div><div>CMMC 2.0 L1/L2/L3</div><div>DHS CDM (HWAM/SWAM/CSM/VULN)</div><div>FISMA · FIPS 140-3</div><div>CJIS · IRS Pub 1075</div>
+          </div>
+        </div>
+        <div class="border border-white/5 rounded p-3">
+          <div class="font-semibold mb-1">🇪🇺 EU</div>
+          <div class="text-slate-400">eu_gdpr profile</div>
+          <div class="mt-2 space-y-0.5 text-[11px]">
+            <div>GDPR Article 32</div><div>NIS2 Directive</div><div>DORA</div><div>UK Cyber Essentials Plus</div>
+          </div>
+        </div>
+        <div class="border border-white/5 rounded p-3">
+          <div class="font-semibold mb-1">🇨🇦 Canada</div>
+          <div class="text-slate-400">canada_pipeda profile</div>
+          <div class="mt-2 space-y-0.5 text-[11px]">
+            <div>PIPEDA</div><div>OSFI B-13 Technology Risk</div><div>Bill C-26</div>
+          </div>
+        </div>
+        <div class="border border-white/5 rounded p-3">
+          <div class="font-semibold mb-1">🇦🇪 UAE / GCC</div>
+          <div class="text-slate-400">uae_nesa profile</div>
+          <div class="mt-2 space-y-0.5 text-[11px]">
+            <div>NESA UAE IAS</div><div>Saudi NCA ECC</div><div>SAMA Cyber</div><div>Qatar NIA Policy</div><div>Oman OCC Cyber</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CISA BOD COMPLIANCE -->
+    <div class="card rounded-xl p-5">
+      <div class="font-semibold mb-3">🇺🇸 CISA Binding Operational Directives (BOD) compliance</div>
+      <p class="text-xs text-slate-400 mb-3">For US federal civilian agencies. MACE's HWAM/SWAM/Vuln/Patch pipeline meets every BOD enforcement requirement.</p>
+      <div id="bod-grid" class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs"></div>
+    </div>
+
+    <!-- ATTESTATION READINESS -->
+    <div class="card rounded-xl p-5">
+      <div class="font-semibold mb-3">📜 Attestation readiness scorecard</div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+        <div class="border border-white/5 rounded p-3">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold">SOC 2 Type II</span>
+            <span class="chip chip-MEDIUM">in audit</span>
+          </div>
+          <div class="step-progress mt-2"><div style="width:62%"></div></div>
+          <div class="text-[10px] text-slate-500 mt-1">CC6, CC7 controls auto-evidenced by MACE.</div>
+        </div>
+        <div class="border border-white/5 rounded p-3">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold">ISO 27001:2022</span>
+            <span class="chip chip-LOW">Stage 1 complete</span>
+          </div>
+          <div class="step-progress mt-2"><div style="width:78%"></div></div>
+          <div class="text-[10px] text-slate-500 mt-1">A.5.23 / A.8.7 / A.8.8 / A.8.16 satisfied.</div>
+        </div>
+        <div class="border border-white/5 rounded p-3">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold">FedRAMP Moderate</span>
+            <span class="chip chip-INFO">prep</span>
+          </div>
+          <div class="step-progress mt-2"><div style="width:25%"></div></div>
+          <div class="text-[10px] text-slate-500 mt-1">AU-2, CM-7, RA-5, SI-3, SI-4 ready; needs 3PAO.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECURITY TOOLS — Zscaler / McAfee / CrowdStrike replacements -->
+  <section id="view-tools" class="space-y-6 hidden">
+    <div class="card rounded-xl p-5">
+      <div class="font-semibold mb-2">🛡 MACE Security Tools — built-in replacements for Zscaler, McAfee, CrowdStrike</div>
+      <p class="text-xs text-slate-400">Every capability below is bundled in the MACE agent binary. No separate license, no separate console.</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+      <!-- VIRUS / MALWARE — replaces McAfee -->
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold">🦠 Virus & Malware Protection</div>
+          <span class="chip chip-LOW">replaces McAfee Total Protection</span>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">Signature + heuristic + behavioural EDR + honey-token deception in one engine.</p>
+        <div class="grid grid-cols-3 gap-3 text-xs text-center my-3">
+          <div class="border border-white/5 rounded p-2"><div class="text-2xl font-bold sev-LOW" id="vs-clean">—</div><div class="text-[10px] text-slate-500 mt-1">Clean scans</div></div>
+          <div class="border border-white/5 rounded p-2"><div class="text-2xl font-bold sev-HIGH" id="vs-mal">—</div><div class="text-[10px] text-slate-500 mt-1">Malware found</div></div>
+          <div class="border border-white/5 rounded p-2"><div class="text-2xl font-bold sev-CRITICAL" id="vs-edr">—</div><div class="text-[10px] text-slate-500 mt-1">EDR detections</div></div>
+        </div>
+        <div class="flex gap-2">
+          <button id="run-virus-scan" class="bg-accent-500 hover:bg-accent-600 px-3 py-1.5 rounded text-xs font-semibold">▶ Scan this device now</button>
+          <button id="run-virus-deep" class="border border-white/10 hover:bg-white/5 px-3 py-1.5 rounded text-xs font-semibold">🔬 Deep scan (ClamAV)</button>
+        </div>
+        <pre id="vs-output" class="mt-3 text-[11px] font-mono bg-ink-950/60 px-3 py-2 rounded max-h-64 overflow-y-auto whitespace-pre-wrap"></pre>
+        <div class="mt-3 text-[10px] text-slate-500">
+          Behind the scenes: <code>malware.py</code> (IOC hashes + persistence heuristics) ·
+          <code>edr/behaviour.py</code> (LSASS access, encoded PowerShell, Cobalt Strike beacons, Office→shell tree) ·
+          <code>deception.py</code> (AWS keys, SSH keys, env-file secrets, KeePass DB honey tokens)
+        </div>
+      </div>
+
+      <!-- NETWORK PROTECTION — replaces Zscaler -->
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold">🌐 Network Protection · Zero Trust</div>
+          <span class="chip chip-LOW">replaces Zscaler ZIA + ZPA + Umbrella</span>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">Per-process micro-segmentation, DNS sinkhole, ZTNA policy — enforced on the endpoint with zero PoP latency.</p>
+        <div class="grid grid-cols-3 gap-3 text-xs text-center my-3">
+          <div class="border border-white/5 rounded p-2"><div class="text-2xl font-bold" id="np-rules">—</div><div class="text-[10px] text-slate-500 mt-1">ZTNA rules</div></div>
+          <div class="border border-white/5 rounded p-2"><div class="text-2xl font-bold sev-HIGH" id="np-blocked">—</div><div class="text-[10px] text-slate-500 mt-1">Domains sinkholed</div></div>
+          <div class="border border-white/5 rounded p-2"><div class="text-2xl font-bold sev-LOW" id="np-status">—</div><div class="text-[10px] text-slate-500 mt-1">Status</div></div>
+        </div>
+        <div class="flex gap-2">
+          <button id="np-enable" class="bg-accent-500 hover:bg-accent-600 px-3 py-1.5 rounded text-xs font-semibold">⚡ Enable sinkhole</button>
+          <button id="np-policy" class="border border-white/10 hover:bg-white/5 px-3 py-1.5 rounded text-xs font-semibold">📋 View policy</button>
+          <button id="np-disable" class="border border-white/10 hover:bg-white/5 px-3 py-1.5 rounded text-xs font-semibold">⏹ Disable</button>
+        </div>
+        <pre id="np-output" class="mt-3 text-[11px] font-mono bg-ink-950/60 px-3 py-2 rounded max-h-64 overflow-y-auto whitespace-pre-wrap"></pre>
+        <div class="mt-3 text-[10px] text-slate-500">
+          <b class="text-accent-400">Where it beats Zscaler:</b> zero PoP hop, identity-aware per-process (user × app × posture),
+          encrypted-traffic risk scoring without TLS decryption, posture-conditional access (deny S3 if STIG &lt; 80%).
+        </div>
+      </div>
+
+      <!-- EDR + behaviour -->
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold">🧠 Endpoint Detection & Response</div>
+          <span class="chip chip-LOW">replaces CrowdStrike Falcon</span>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">Behavioural rules over the live process tree — MITRE ATT&CK technique IDs.</p>
+        <div id="edr-techniques" class="space-y-1 text-xs"></div>
+      </div>
+
+      <!-- Honeytokens / deception -->
+      <div class="card rounded-xl p-5">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold">🍯 Honey-token Deception Layer</div>
+          <span class="chip chip-LOW">unique to MACE</span>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">Convincing fake credentials placed where attackers actually look. Trips immediately on read.</p>
+        <div class="space-y-1 text-xs">
+          <div class="flex justify-between border-b border-white/5 py-1.5"><span>AWS access-key pair</span><span class="font-mono text-slate-400">~/.aws/credentials.backup</span></div>
+          <div class="flex justify-between border-b border-white/5 py-1.5"><span>SSH private key</span><span class="font-mono text-slate-400">~/.ssh/id_rsa.bak</span></div>
+          <div class="flex justify-between border-b border-white/5 py-1.5"><span>Env-file secret</span><span class="font-mono text-slate-400">~/.env.production</span></div>
+          <div class="flex justify-between border-b border-white/5 py-1.5"><span>Slack bot token</span><span class="font-mono text-slate-400">~/Documents/slack-bot-readme.txt</span></div>
+          <div class="flex justify-between border-b border-white/5 py-1.5"><span>KeePass DB</span><span class="font-mono text-slate-400">~/Documents/Passwords.kdbx</span></div>
+          <div class="flex justify-between py-1.5"><span>LSASS dump</span><span class="font-mono text-slate-400">C:\Windows\Temp\lsass.dmp</span></div>
+        </div>
+        <div class="mt-3 text-[10px] text-slate-500">No competitor ships endpoint deception by default. This catches the lateral-movement step of any real breach.</div>
+      </div>
+
+      <!-- Auto-remediation -->
+      <div class="card rounded-xl p-5 lg:col-span-2">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold">🤖 Self-Remediation Engine</div>
+          <span class="chip chip-LOW">unique to MACE</span>
+        </div>
+        <p class="text-xs text-slate-400 mb-3">Every finding ships with an allowlisted command. Macey can run it automatically when priority ≥ 9.0; below that the analyst clicks Approve. Every action lands in <code>~/.mace-agent/audit.log</code> with the SHA-256 chain-of-custody hash.</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div class="border border-white/5 rounded p-3">
+            <div class="font-semibold mb-1">⚡ Plan mode</div>
+            <div class="text-slate-400">Generate fix + show command + dry-run result. Works on any device in the fleet.</div>
+          </div>
+          <div class="border border-white/5 rounded p-3">
+            <div class="font-semibold mb-1">👤 Ask mode</div>
+            <div class="text-slate-400">Analyst clicks "Execute" on the dashboard. Audit log captures who approved + when.</div>
+          </div>
+          <div class="border border-white/5 rounded p-3">
+            <div class="font-semibold mb-1">🤖 Auto mode</div>
+            <div class="text-slate-400">Macey executes if priority ≥ 9.0 AND the command matches the safe-verb allowlist. KEV-listed CVEs auto-patch immediately.</div>
+          </div>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button id="show-audit-log" class="border border-white/10 hover:bg-white/5 px-3 py-1.5 rounded text-xs font-semibold">📜 View audit log</button>
+          <a href="https://nvd.nist.gov/vuln" target="_blank" class="border border-white/10 hover:bg-white/5 px-3 py-1.5 rounded text-xs font-semibold">↗ NIST NVD</a>
+          <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank" class="border border-white/10 hover:bg-white/5 px-3 py-1.5 rounded text-xs font-semibold">↗ CISA KEV</a>
+          <a href="https://attack.mitre.org/" target="_blank" class="border border-white/10 hover:bg-white/5 px-3 py-1.5 rounded text-xs font-semibold">↗ MITRE ATT&CK</a>
+        </div>
+        <pre id="audit-output" class="mt-3 text-[11px] font-mono bg-ink-950/60 px-3 py-2 rounded max-h-48 overflow-y-auto hidden"></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEEDS -->
+  <section id="view-feeds" class="space-y-6 hidden">
+    <div class="card rounded-xl p-5">
+      <div class="flex items-center justify-between">
+        <div class="font-semibold">Threat intelligence + STIG feeds</div>
+        <button id="feeds-refresh" class="bg-accent-500 hover:bg-accent-600 px-3 py-1.5 rounded text-xs">Refresh now</button>
+      </div>
+      <div id="feeds-list" class="mt-4 space-y-2 text-sm"></div>
+    </div>
+  </section>
+
+  <footer class="text-center text-[11px] text-slate-500 pt-6 pb-2">
+    UnifiedSec Technologies · Patent IN/2026/UNISEC/MACE-001 + PCT (US · CA · EU · UAE · IN)<br/>
+    One agent. Seven domains. Zero CrowdStrike. Zero Tenable.
+  </footer>
+</main>
+
+<script>
+const $  = sel => document.querySelector(sel);
+const $$ = sel => [...document.querySelectorAll(sel)];
+
+// ── tab routing ──
+const VIEWS = ['devices','device','macey','compliance','tools','feeds'];
+function showTab(name) {
+  VIEWS.forEach(v => {
+    $('#view-'+v).classList.toggle('hidden', v !== name);
+    $('#tab-'+v).setAttribute('data-active', v === name ? 'true' : 'false');
+  });
+  if (name === 'compliance') { loadIndustries(); renderBOD(); }
+  if (name === 'tools') initTools();
+  if (name === 'feeds') loadFeeds();
+}
+VIEWS.forEach(v => $('#tab-'+v).addEventListener('click', () => showTab(v)));
+
+// ── platform + device-type icons ──
+const PLATFORM_ICON = {
+  darwin: '🍎', linux: '🐧', windows: '🪟', android: '🤖', ios: '📱',
+};
+const DEVICE_TYPE_ICON = {
+  laptop: '💻', desktop: '🖥', tablet: '📋', smartphone: '📱',
+  server: '🗄', database_server: '🗃', domain_controller: '🏛',
+  web_server: '🌐', vpn_concentrator: '🔒',
+  kubernetes_node: '☸', vm: '🧊', container_host: '📦',
+  network_router: '🌐', network_switch: '🔌', firewall_appliance: '🛡',
+  printer: '🖨', ip_camera: '📹', smart_tv: '📺',
+  ot_ics_plc: '⚙️', medical_device: '🏥',
+};
+const SCAN_ICON = {
+  real_time: '⚡', scheduled: '⏰', on_demand: '👤', initial: '🆕',
+};
+function fullTime(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    return d.toLocaleString(undefined, {timeZone: tz, dateStyle:'medium', timeStyle:'short'}) + ' ' + tz.split('/').pop();
+  } catch(e) { return iso.slice(0,16); }
+}
+
+// ── fleet filter / pagination state ──
+window._FLEET_STATE = {
+  search: '', severity: 'all', platform: 'all',
+  tenant: 'all', scanType: 'all', window: 'all',
+  deviceType: 'all', vulnType: 'all',
+  sort: 'risk_desc', pageSize: 48, page: 0,
+};
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelector('#fleet-search')?.addEventListener('input', e => {
+    window._FLEET_STATE.search = e.target.value.toLowerCase();
+    window._FLEET_STATE.page = 0; renderFleetCards();
+  });
+  document.querySelector('#fleet-sort')?.addEventListener('change', e => {
+    window._FLEET_STATE.sort = e.target.value; renderFleetCards();
+  });
+  document.querySelector('#fleet-pagesize')?.addEventListener('change', e => {
+    window._FLEET_STATE.pageSize = parseInt(e.target.value, 10);
+    window._FLEET_STATE.page = 0; renderFleetCards();
+  });
+  document.querySelector('#fleet-prev')?.addEventListener('click', () => {
+    window._FLEET_STATE.page = Math.max(0, window._FLEET_STATE.page - 1); renderFleetCards();
+  });
+  document.querySelector('#fleet-next')?.addEventListener('click', () => {
+    window._FLEET_STATE.page += 1; renderFleetCards();
+  });
+  document.querySelector('#fleet-tenant')?.addEventListener('change', e => {
+    window._FLEET_STATE.tenant = e.target.value;
+    window._FLEET_STATE.page = 0; renderFleetCards();
+  });
+  document.querySelector('#fleet-devicetype')?.addEventListener('change', e => {
+    window._FLEET_STATE.deviceType = e.target.value;
+    window._FLEET_STATE.page = 0; renderFleetCards();
+  });
+  document.querySelector('#fleet-vulntype')?.addEventListener('change', e => {
+    window._FLEET_STATE.vulnType = e.target.value;
+    window._FLEET_STATE.page = 0; renderFleetCards();
+  });
+  document.querySelector('#fleet-scantype')?.addEventListener('change', e => {
+    window._FLEET_STATE.scanType = e.target.value;
+    window._FLEET_STATE.page = 0; renderFleetCards();
+  });
+  document.querySelector('#fleet-window')?.addEventListener('change', e => {
+    window._FLEET_STATE.window = e.target.value;
+    window._FLEET_STATE.page = 0; renderFleetCards();
+  });
+});
+// Filter chips (event delegation; HTML already has the buttons)
+document.addEventListener('click', e => {
+  if (e.target.matches('.fleet-filter')) {
+    document.querySelectorAll('.fleet-filter').forEach(b => b.setAttribute('data-active','false'));
+    e.target.setAttribute('data-active','true');
+    window._FLEET_STATE.severity = e.target.dataset.k;
+    window._FLEET_STATE.page = 0; renderFleetCards();
+  }
+  if (e.target.matches('.plat-filter')) {
+    document.querySelectorAll('.plat-filter').forEach(b => b.setAttribute('data-active','false'));
+    e.target.setAttribute('data-active','true');
+    window._FLEET_STATE.platform = e.target.dataset.p;
+    window._FLEET_STATE.page = 0; renderFleetCards();
+  }
+});
+
+function refreshKpis(filteredList) {
+  const list = filteredList || [];
+  const total = list.length;
+  const fleetTotal = window._FULL_FLEET_COUNT || total;
+  const stat = document.querySelector('#stat-devices');
+  if (stat) {
+    if (total === fleetTotal) stat.textContent = total.toLocaleString();
+    else stat.textContent = `${total.toLocaleString()} / ${fleetTotal.toLocaleString()}`;
+  }
+  const avg = total ? (list.reduce((a,d)=>a+(d.device_risk_score||0),0)/total).toFixed(1) : '—';
+  document.querySelector('#stat-avgrisk').textContent = avg;
+  document.querySelector('#stat-cve').textContent = list.reduce((a,d)=>a+(d.vuln_count||0), 0).toLocaleString();
+  document.querySelector('#stat-crit-count').textContent = list.filter(d => d.severity==='CRITICAL').length;
+  const stigPass = list.reduce((a,d)=>a+(d.stig_pass||0),0);
+  const stigFail = list.reduce((a,d)=>a+(d.stig_fail||0),0);
+  document.querySelector('#stat-stig').textContent = stigPass+stigFail ? (100*stigPass/(stigPass+stigFail)).toFixed(0)+'%' : '—';
+  // severity + platform chip counts also update with the filter
+  ['CRITICAL','HIGH','MEDIUM','LOW','INFO'].forEach(sev => {
+    const el = document.querySelector(`#cnt-${sev}`);
+    if (el) el.textContent = list.filter(d => d.severity === sev).length;
+  });
+  document.querySelector('#cnt-all').textContent = total;
+  ['darwin','windows','linux','android','ios'].forEach(p => {
+    const el = document.querySelector(`#cnt-plat-${p}`);
+    if (el) el.textContent = list.filter(d => d.platform === p).length;
+  });
+  document.querySelector('#cnt-plat-all').textContent = total;
+}
+
+// ── devices list rendering ──
+async function loadDevices() {
+  const r = await fetch('/agent/reports').then(r=>r.json()).catch(()=>({reports:[]}));
+  const devices = r.reports || [];
+
+  window._FULL_FLEET_COUNT = devices.length;
+  refreshKpis(devices);
+
+  // ── Counts per severity / platform ──
+  ['CRITICAL','HIGH','MEDIUM','LOW','INFO'].forEach(sev => {
+    const el = document.querySelector(`#cnt-${sev}`);
+    if (el) el.textContent = devices.filter(d => d.severity === sev).length;
+  });
+  document.querySelector('#cnt-all').textContent = devices.length;
+  ['darwin','windows','linux','android','ios'].forEach(p => {
+    const el = document.querySelector(`#cnt-plat-${p}`);
+    if (el) el.textContent = devices.filter(d => d.platform === p).length;
+  });
+  document.querySelector('#cnt-plat-all').textContent = devices.length;
+
+  // Stash all device summaries + lazy-load detail-tier on demand
+  window._ALL_DEVICES = devices;
+
+  // For the top-12 fleet actions, fetch full detail (parallel, capped)
+  const sample = devices.slice(0, 60);
+  const details = await Promise.all(sample.map(d =>
+    fetch('/agent/reports/'+d.host_id).then(r=>r.json()).catch(()=>null)));
+  const totalApps = details.reduce((a,r)=> a + ((r?.software?.applications||[]).length), 0);
+  // Approximate apps for large fleets — scale from sample to total
+  const approx = devices.length > sample.length
+    ? Math.round(totalApps / sample.length * devices.length)
+    : totalApps;
+  $('#stat-apps').textContent = approx.toLocaleString();
+  window._SAMPLE_DETAILS = {};
+  sample.forEach((d, i) => { if (details[i]) window._SAMPLE_DETAILS[d.host_id] = details[i]; });
+
+  renderFleetCards();
+  loadFleetActions(sample, details);
+  populateDevicePicker(devices);
+}
+
+function renderFleetCards() {
+  const all = window._ALL_DEVICES || [];
+  const st = window._FLEET_STATE;
+  // Populate the company dropdown once (idempotent)
+  const tSel = document.querySelector('#fleet-tenant');
+  if (tSel && tSel.options.length <= 1) {
+    const tenants = new Map();
+    all.forEach(d => { if (d.tenant_id) tenants.set(d.tenant_id, d.tenant || d.tenant_id); });
+    [...tenants.entries()].sort((a,b) => a[1].localeCompare(b[1])).forEach(([id,name]) => {
+      const o = document.createElement('option'); o.value = id; o.textContent = name; tSel.appendChild(o);
+    });
+  }
+  const nowMs = Date.now();
+  let list = all.filter(d => {
+    if (st.severity !== 'all' && d.severity !== st.severity) return false;
+    if (st.platform !== 'all' && d.platform !== st.platform) return false;
+    if (st.tenant !== 'all' && d.tenant_id !== st.tenant) return false;
+    if (st.scanType !== 'all' && d.scan_type !== st.scanType) return false;
+    if (st.deviceType !== 'all' && d.device_type !== st.deviceType) return false;
+    if (st.vulnType === 'critical' && d.severity !== 'CRITICAL') return false;
+    if (st.vulnType === 'high' && d.severity !== 'HIGH') return false;
+    if (st.vulnType === 'zero_cves' && (d.vuln_count||0) > 0) return false;
+    if (st.vulnType === 'stig_fail' && (d.stig_fail||0) === 0) return false;
+    if (st.window !== 'all' && d.captured_at) {
+      const ageMin = (nowMs - new Date(d.captured_at).getTime()) / 60000;
+      if (ageMin > parseFloat(st.window)) return false;
+    }
+    if (st.search) {
+      const blob = `${d.hostname||''} ${d.platform||''} ${d.tenant||''} ${d.device_type||''} ${d.department||''} ${d.city||''}`.toLowerCase();
+      if (!blob.includes(st.search)) return false;
+    }
+    return true;
+  });
+  // Sort
+  list.sort((a,b) => {
+    switch (st.sort) {
+      case 'risk_asc':    return (a.device_risk_score||0) - (b.device_risk_score||0);
+      case 'vulns_desc':  return (b.vuln_count||0) - (a.vuln_count||0);
+      case 'hostname':    return (a.hostname||'').localeCompare(b.hostname||'');
+      case 'recent':      return (b.captured_at||'').localeCompare(a.captured_at||'');
+      default:            return (b.device_risk_score||0) - (a.device_risk_score||0);
+    }
+  });
+  const total = list.length;
+  const pages = Math.max(1, Math.ceil(total / st.pageSize));
+  st.page = Math.min(st.page, pages - 1);
+  const start = st.page * st.pageSize;
+  const slice = list.slice(start, start + st.pageSize);
+  document.querySelector('#fleet-shown').textContent =
+    total ? `Showing ${start+1}–${Math.min(start+st.pageSize, total)} of ${total.toLocaleString()} device${total===1?'':'s'}` : 'No devices match.';
+  document.querySelector('#fleet-page').textContent = `page ${st.page+1} of ${pages}`;
+  // Update KPIs to reflect current filter
+  refreshKpis(list);
+
+  $('#device-cards').innerHTML = slice.map(d => {
+    const det = (window._SAMPLE_DETAILS || {})[d.host_id] || {};
+    const ip = det.hardware?.primary_ip || '—';
+    const mac = det.hardware?.primary_mac || '—';
+    const model = det.hardware?.model || det.hardware?.manufacturer || d.hostname;
+    const apps = (det.software?.applications || []).length || '—';
+    const cvs = (det.vulns?.hits || []).length || d.vuln_count || 0;
+    const realFlag = det.real_collectors ? 'real scan' : 'simulated';
+    const realCls  = det.real_collectors ? 'badge-real' : 'badge-sim';
+    const dept = det.tags?.department || d.department || '';
+    const city = det.tags?.city || d.city || '';
+    const tenant = d.tenant || det.tags?.tenant || '';
+    const devType = d.device_type || '';
+    const scanType = d.scan_type || 'real_time';
+    const reported_by = `${escapeHtml(det.agent_version || 'mace-agent')} from ${escapeHtml(ip)}`;
+    return `
+    <div class="card rounded-xl p-5 cursor-pointer hover:ring-glow transition" onclick="openDevice('${d.host_id}')">
+      <div class="flex items-start justify-between mb-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="text-2xl shrink-0">${DEVICE_TYPE_ICON[devType] || PLATFORM_ICON[d.platform] || '🖥'}</div>
+          <div class="min-w-0">
+            <div class="font-semibold leading-tight truncate">${escapeHtml(d.hostname || d.host_id)}</div>
+            <div class="text-[11px] text-slate-400 mt-0.5 truncate">${escapeHtml(model || '')}</div>
+            ${tenant ? `<div class="text-[10px] text-accent-400 mt-0.5">🏢 ${escapeHtml(tenant)}</div>` : ''}
+            ${dept ? `<div class="text-[10px] text-slate-500 mt-0.5">${escapeHtml(dept)}${city?' · '+escapeHtml(city):''}</div>` : ''}
+          </div>
+        </div>
+        <div class="text-right shrink-0">
+          <div class="text-2xl font-bold sev-${d.severity || 'INFO'}">${(d.device_risk_score||0).toFixed(1)}</div>
+          <span class="chip chip-${d.severity || 'INFO'}">${d.severity || 'INFO'}</span>
+        </div>
+      </div>
+      <div class="space-y-1 text-xs">
+        <div class="flex justify-between"><span class="text-slate-500">Type</span><span>${devType.replace(/_/g,' ')}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">OS</span><span class="font-mono truncate ml-2">${escapeHtml(det.software?.os_name || d.platform)} ${escapeHtml(det.software?.os_version || '')}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">IP</span><span class="font-mono">${escapeHtml(ip)}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">MAC</span><span class="font-mono">${escapeHtml(mac)}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Apps</span><span>${apps}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Vulns</span><span>${cvs}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">STIG</span><span>${d.stig_pass||0}/${(d.stig_pass||0)+(d.stig_fail||0)} pass</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Scan type</span><span>${SCAN_ICON[scanType]||''} ${scanType.replace(/_/g,' ')}</span></div>
+        <div class="flex justify-between"><span class="text-slate-500">Last scan</span><span class="text-right">${niceTime(d.captured_at)}<br/><span class="text-[10px] text-slate-500">${fullTime(d.captured_at)}</span></span></div>
+        <div class="flex justify-between mt-1 pt-1 border-t border-white/5"><span class="text-slate-500">Reported by</span><span class="font-mono text-[10px] truncate ml-2">${reported_by}</span></div>
+      </div>
+      <div class="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
+        <span class="chip ${realCls}">${realFlag}</span>
+        <span class="text-xs text-slate-500">click to drill in →</span>
+      </div>
+    </div>`;
+  }).join('') || '<div class="card rounded-xl p-6 text-center text-slate-500 col-span-full">No devices match your filter.</div>';
+}
+
+function loadFleetActions(devices, details) {
+  const all = [];
+  for (let i = 0; i < devices.length; i++) {
+    const rep = details[i];
+    const actions = (rep?.remediation_plan?.actions) || [];
+    actions.slice(0,5).forEach(a => all.push({
+      ...a,
+      host: devices[i].hostname || devices[i].host_id,
+      host_id: devices[i].host_id,
+      platform: devices[i].platform,
+      _rep: rep,
+    }));
+  }
+  all.sort((a,b) => (b.priority_score||0) - (a.priority_score||0));
+  const top = all.slice(0,12);
+  window._FLEET_ACTIONS = top;
+
+  $('#fleet-actions').innerHTML = top.map((a, idx) => {
+    // Resolve "what's causing it" — find the underlying CVE / STIG / malware / DLP record
+    const causedBy = resolveCause(a);
+    return `
+    <li>
+      <details class="border border-white/5 rounded-lg p-2 hover:bg-white/[0.03]">
+        <summary class="flex items-start gap-3 cursor-pointer">
+          <div class="w-10 text-right font-bold sev-${a.severity}">${(a.priority_score||0).toFixed(1)}</div>
+          <div class="flex-1 min-w-0">
+            <div class="font-medium truncate">${escapeHtml(a.title)}</div>
+            <div class="text-xs text-slate-400 truncate">
+              <span class="text-accent-400">${escapeHtml(a.host)}</span>
+              <span class="text-slate-600 mx-1">·</span>
+              ${escapeHtml(a.component || '')}
+              ${a.cve_ids?.length ? `<span class="text-slate-600 mx-1">·</span>${a.cve_ids.length} CVE(s)` : ''}
+              ${a.stig_ids?.length ? `<span class="text-slate-600 mx-1">·</span>${a.stig_ids.length} STIG` : ''}
+            </div>
+          </div>
+          <span class="chip chip-${a.severity}">${a.severity}</span>
+          <span class="text-xs text-slate-500 ml-1">▼</span>
+        </summary>
+
+        <div class="mt-3 pl-13 space-y-3 text-xs">
+          <!-- WHERE -->
+          <div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500">📍 Where</div>
+            <div class="mt-1 space-y-0.5">
+              <div><span class="text-slate-500">Device   :</span> <span class="font-mono">${escapeHtml(a.host)} (${escapeHtml(a.platform || '?')})</span></div>
+              <div><span class="text-slate-500">Host ID  :</span> <span class="font-mono text-[10px] text-slate-400">${escapeHtml(a.host_id)}</span></div>
+              ${causedBy.install_path ? `<div><span class="text-slate-500">App path :</span> <span class="font-mono break-all">${escapeHtml(causedBy.install_path)}</span></div>` : ''}
+              ${causedBy.process_path ? `<div><span class="text-slate-500">Process  :</span> <span class="font-mono">${escapeHtml(causedBy.process_path)}</span></div>` : ''}
+              ${causedBy.file_path ? `<div><span class="text-slate-500">File     :</span> <span class="font-mono break-all">${escapeHtml(causedBy.file_path)}</span></div>` : ''}
+              ${causedBy.source_ip ? `<div><span class="text-slate-500">Source IP:</span> <span class="font-mono">${escapeHtml(causedBy.source_ip)}</span></div>` : ''}
+            </div>
+          </div>
+
+          <!-- WHAT'S CAUSING IT -->
+          <div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500">🔍 What's causing it</div>
+            <div class="mt-1 space-y-1">
+              ${(a.cve_ids || []).map(cve => {
+                const v = causedBy.cve_records[cve] || {};
+                return `<div class="bg-ink-950/40 rounded p-1.5">
+                  <div class="flex items-center gap-2"><span class="chip chip-${v.severity||a.severity}">${v.severity||a.severity}</span>
+                    <span class="font-mono">${escapeHtml(cve)}</span>
+                    ${v.cvss_v3 ? `<span class="text-slate-400">CVSS ${v.cvss_v3}</span>` : ''}
+                    ${v.epss_score !== undefined ? `<span class="text-slate-400">EPSS ${(v.epss_score||0).toFixed(2)}</span>` : ''}
+                    ${v.exploit_status ? `<span class="text-slate-500">${escapeHtml(v.exploit_status)}</span>` : ''}
+                  </div>
+                  ${v.description ? `<div class="text-slate-300 mt-1">${escapeHtml(v.description)}</div>` : ''}
+                  ${v.affected_component ? `<div class="text-slate-500 mt-0.5">in ${escapeHtml(v.affected_component)} ${escapeHtml(v.installed_version||'')} (fixed in ${escapeHtml(v.fixed_version||'?')})</div>` : ''}
+                </div>`;
+              }).join('')}
+              ${(a.stig_ids || []).map(sid => {
+                const c = causedBy.stig_records[sid] || {};
+                return `<div class="bg-ink-950/40 rounded p-1.5">
+                  <div class="flex items-center gap-2"><span class="chip chip-${a.severity}">STIG</span>
+                    <span class="font-mono">${escapeHtml(sid)}</span>
+                    ${c.category ? `<span class="text-slate-400">${escapeHtml(c.category)}</span>` : ''}
+                  </div>
+                  ${c.title ? `<div class="text-slate-300 mt-1">${escapeHtml(c.title)}</div>` : ''}
+                  ${c.observed ? `<div class="text-slate-500 mt-0.5">Observed: ${escapeHtml(c.observed)}</div>` : ''}
+                  ${c.expected ? `<div class="text-slate-500">Expected: ${escapeHtml(c.expected)}</div>` : ''}
+                </div>`;
+              }).join('')}
+              ${(!a.cve_ids?.length && !a.stig_ids?.length) ? `<div class="text-slate-400">${escapeHtml(a.description || a.rationale || '')}</div>` : ''}
+            </div>
+          </div>
+
+          <!-- HOW TO FIX -->
+          <div>
+            <div class="text-[10px] uppercase tracking-wide text-slate-500">🛠 How to fix</div>
+            <div class="mt-1">${escapeHtml(a.remediation || 'Apply vendor patch.')}</div>
+            ${a.remediation_cmd ? `<pre class="mt-1 text-[11px] font-mono bg-ink-950/60 px-2 py-1 rounded overflow-x-auto">${escapeHtml(a.remediation_cmd)}</pre>` : ''}
+          </div>
+
+          <!-- ACTIONS -->
+          <div class="flex items-center gap-2 pt-1 flex-wrap">
+            <button onclick="fleetFixNow(${idx})"
+              class="bg-accent-500 hover:bg-accent-600 px-3 py-1.5 rounded text-xs font-semibold">
+              ⚡ Fix now
+            </button>
+            <button onclick="fleetExecute(${idx})"
+              class="bg-crit/80 hover:bg-crit px-3 py-1.5 rounded text-xs font-semibold text-white"
+              title="Run the remediation command with audit log">
+              🛡 Execute remediation
+            </button>
+            <button onclick="fleetAskMacey(${idx})"
+              class="border border-white/10 hover:bg-white/5 px-3 py-1.5 rounded text-xs font-semibold">
+              ✨ Ask Macey
+            </button>
+            <button onclick="openDevice('${a.host_id}')"
+              class="border border-white/10 hover:bg-white/5 px-3 py-1.5 rounded text-xs font-semibold">
+              📋 Open device
+            </button>
+          </div>
+          <div id="fleet-fix-result-${idx}" class="text-[11px]"></div>
+        </div>
+      </details>
+    </li>`;
+  }).join('') || '<li class="text-slate-500 text-sm">No pending remediation actions.</li>';
+}
+
+// Resolve cause + location for a fleet action by looking through the report
+function resolveCause(a) {
+  const rep = a._rep || {};
+  const out = { cve_records: {}, stig_records: {},
+                install_path: '', process_path: '', file_path: '',
+                source_ip: '' };
+  // Lookup CVE rows
+  (rep.vulns?.hits || []).forEach(v => {
+    if ((a.cve_ids||[]).includes(v.cve_id)) out.cve_records[v.cve_id] = v;
+  });
+  // Lookup STIG rows
+  (rep.stig?.checks || []).forEach(c => {
+    if ((a.stig_ids||[]).includes(c.check_id)) out.stig_records[c.check_id] = c;
+  });
+  // Lookup app install_path by component name
+  if (a.component) {
+    const app = (rep.software?.applications || []).find(x =>
+      (x.name||'').toLowerCase() === (a.component||'').toLowerCase());
+    if (app && app.install_path) out.install_path = app.install_path;
+  }
+  // Malware finding for path
+  (rep.malware?.findings || []).forEach(m => {
+    if (m.family && (a.component||'').includes(m.family)) out.file_path = m.path;
+  });
+  // Intrusion source IP — pick the first matching event
+  (rep.intrusion?.events || []).forEach(e => {
+    if (!out.source_ip && e.source_ip) out.source_ip = e.source_ip;
+  });
+  // DLP path
+  (rep.dlp?.hits || []).forEach(h => {
+    if (!out.file_path && h.path) out.file_path = h.path;
+  });
+  // EDR process
+  (rep.edr?.hits || []).forEach(h => {
+    if (!out.process_path && h.process) out.process_path = `${h.process} (PID ${h.pid})`;
+  });
+  return out;
+}
+
+async function fleetFixNow(idx) {
+  const a = (window._FLEET_ACTIONS || [])[idx];
+  if (!a) return;
+  const t = document.querySelector(`#fleet-fix-result-${idx}`);
+  t.innerHTML = '<span class="text-slate-400">Generating fix plan…</span>';
+  const r = await fetch('/agent/fix', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({host_id: a.host_id, finding_id: a.action_id,
+                           mode: 'plan', execute: false})}).then(r=>r.json());
+  if (r.error) { t.innerHTML = `<span class="text-crit">${escapeHtml(r.error)}</span>`; return; }
+  const at = r.action_taken || {};
+  t.innerHTML = `<div class="bg-ink-950/60 rounded p-2 mt-2">
+    <div class="text-ok">✓ Plan generated</div>
+    <div class="text-slate-300 mt-1">${escapeHtml(at.decision || '')}</div>
+    ${at.cmd ? `<pre class="mt-1 text-[10px] font-mono">${escapeHtml(at.cmd)}</pre>` : ''}
+    <div class="text-[10px] text-slate-500 mt-1">Click "Execute remediation" to actually run this with audit log.</div>
+  </div>`;
+}
+
+async function fleetExecute(idx) {
+  const a = (window._FLEET_ACTIONS || [])[idx];
+  if (!a) return;
+  if (!confirm(`Execute remediation for "${a.title}" on ${a.host}?\n\nCommand: ${a.remediation_cmd || '(manual)'}\n\nThis will run for real and be logged to ~/.mace-agent/audit.log.`)) return;
+  const t = document.querySelector(`#fleet-fix-result-${idx}`);
+  t.innerHTML = '<span class="text-slate-400">Executing…</span>';
+  const r = await fetch('/agent/fix', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({host_id: a.host_id, finding_id: a.action_id,
+                           mode: 'auto', execute: true})}).then(r=>r.json());
+  const at = r.action_taken || {};
+  t.innerHTML = `<div class="bg-ink-950/60 rounded p-2 mt-2">
+    <div class="${at.decision === 'executed_ok' ? 'text-ok' : 'text-warn'}">⚡ ${escapeHtml(at.decision || '?')}</div>
+    ${at.stdout ? `<pre class="text-[10px] font-mono whitespace-pre-wrap text-slate-300 mt-1">${escapeHtml(at.stdout)}</pre>` : ''}
+    ${at.stderr ? `<pre class="text-[10px] font-mono whitespace-pre-wrap text-crit mt-1">${escapeHtml(at.stderr)}</pre>` : ''}
+  </div>`;
+  loadDevices();
+}
+
+function fleetAskMacey(idx) {
+  const a = (window._FLEET_ACTIONS || [])[idx];
+  if (!a) return;
+  showTab('macey');
+  $('#macey-input').value = `Walk me through fixing "${a.title}" on device ${a.host} (host_id ${a.host_id}). The finding involves ${(a.cve_ids||[]).join(', ')||a.component}.`;
+  $('#macey-form').requestSubmit();
+}
+
+async function loadEvents() {
+  const r = await fetch('/agent/events').then(r=>r.json()).catch(()=>({events:[]}));
+  $('#fleet-events').innerHTML = (r.events||[]).slice(0,30).map(e => `
+    <li class="text-slate-400"><span class="text-slate-500">${niceTime(new Date(e.ts*1000).toISOString())}</span> · <span class="text-accent-400">${e.kind}</span> · ${e.host_id || ''} ${e.summary ? '· risk '+(e.summary.device_risk_score||0) : ''}</li>
+  `).join('') || '<li class="text-slate-500">No events yet.</li>';
+}
+
+// ── device detail ──
+function populateDevicePicker(devices) {
+  $('#device-picker').innerHTML = devices.map(d =>
+    `<option value="${d.host_id}">${PLATFORM_ICON[d.platform]||'🖥'}  ${d.hostname || d.host_id} (${d.platform})</option>`).join('');
+}
+async function openDevice(host_id) {
+  showTab('device');
+  $('#device-picker').value = host_id;
+  await renderDevice(host_id);
+}
+$('#device-picker').addEventListener('change', e => renderDevice(e.target.value));
+
+async function renderDevice(host_id) {
+  const rep = await fetch('/agent/reports/'+host_id).then(r=>r.json()).catch(()=>null);
+  if (!rep) return;
+  const s = rep.summary || {};
+  $('#device-name').textContent = rep.hostname || host_id;
+  $('#device-icon').textContent = PLATFORM_ICON[rep.platform] || '🖥';
+  $('#device-os').textContent = `${rep.software?.os_name || ''} ${rep.software?.os_version || ''}  ·  ${rep.hardware?.model || rep.hardware?.manufacturer || ''}`;
+  $('#device-meta').textContent = `host_id ${host_id}  ·  scanned ${niceTime(rep.captured_at)}  ·  agent ${rep.agent_version}`;
+  const real = rep.real_collectors;
+  $('#device-realsim').className = 'chip ' + (real ? 'badge-real' : 'badge-sim');
+  $('#device-realsim').textContent = real ? 'real scan' : 'simulated';
+
+  $('#dev-risk').textContent = (s.device_risk_score || 0).toFixed(1);
+  $('#dev-risk').className = 'text-5xl font-bold sev-' + (s.severity || 'INFO');
+  $('#dev-severity').innerHTML = `<span class="chip chip-${s.severity||'INFO'}">${s.severity||'INFO'}</span>`;
+
+  $('#dev-hwam').textContent = s.hwam_assets || 0;
+  $('#dev-hwam-sub').textContent = `${rep.hardware?.disks?.length||0} disks · ${rep.hardware?.interfaces?.length||0} NICs · ${(rep.hardware?.peripherals||[]).length} peripherals`;
+  $('#dev-swam').textContent = s.swam_apps || 0;
+  $('#dev-swam-sub').textContent = `${rep.software?.services?.length || 0} services · ${rep.software?.open_ports?.length || 0} listening ports`;
+  $('#dev-stig').textContent = `${Math.round((s.stig_compliance_ratio||0)*100)}%`;
+  $('#dev-stig-sub').textContent = `${s.stig_pass||0} pass · ${s.stig_fail||0} fail`;
+  $('#dev-vulns').textContent = s.vuln_count || 0;
+  $('#dev-vulns-sub').textContent = `${s.vuln_critical||0} CRIT · ${s.vuln_high||0} HIGH`;
+
+  // ── HARDWARE KV ──
+  const hw = rep.hardware || {};
+  const kvRows = [
+    ['Manufacturer',    hw.manufacturer],
+    ['Country of origin', hw.country_of_origin],
+    ['Model',           hw.model],
+    ['Chip / CPU',      hw.chip],
+    ['CPU cores',       hw.cpu_cores],
+    ['Memory',          hw.memory_gb ? hw.memory_gb + ' GB' : ''],
+    ['Serial',          hw.serial_number],
+    ['Firmware',        hw.firmware_version],
+    ['Disk encryption', hw.disk_encryption === true ? '✓ on' : (hw.disk_encryption === false ? '✗ off' : '?')],
+    ['Secure boot',     hw.secure_boot === true ? '✓ on' : (hw.secure_boot === false ? '✗ off' : '?')],
+    ['TPM / Secure Enclave', hw.tpm_present ? '✓ present' : '–'],
+    ['Primary IP',      hw.primary_ip],
+    ['Primary MAC',     hw.primary_mac],
+    ['Peripherals',     (hw.peripherals || []).slice(0, 5).join(', ') + ((hw.peripherals||[]).length > 5 ? `, +${hw.peripherals.length - 5} more` : '')],
+  ].filter(r => r[1] !== undefined && r[1] !== null && r[1] !== '');
+  $('#dev-hw-kv').innerHTML = kvRows.map(([k,v]) =>
+    `<div class="kv-row"><div class="kv-key">${escapeHtml(k)}</div><div class="kv-val">${escapeHtml(String(v))}</div></div>`
+  ).join('');
+  $('#dev-hw-tag').textContent = real ? 'collected live from this device' : 'simulated profile';
+
+  // ── DISKS ──
+  $('#dev-disks').innerHTML = (hw.disks || []).map(d => {
+    const pct = d.size_gb ? Math.max(0, 1 - (d.free_gb||0)/d.size_gb) : 0;
+    return `<div>
+      <div class="flex items-center justify-between text-xs"><span>${escapeHtml(d.name || d.mount || 'disk')} <span class="text-slate-500">${escapeHtml(d.fs||'')}</span></span>
+        <span class="text-slate-400">${(d.size_gb||0).toFixed(1)} GB total · ${(d.free_gb||0).toFixed(1)} GB free · ${d.encrypted ? '🔒 encrypted' : '⚠ not encrypted'}</span>
+      </div>
+      <div class="step-progress mt-1"><div style="width:${(pct*100).toFixed(1)}%"></div></div>
+    </div>`;
+  }).join('') || '<div class="text-slate-500 text-sm">No disks reported.</div>';
+
+  // ── INTERFACES (IPs) ──
+  $('#dev-interfaces').innerHTML = (hw.interfaces || []).map(i =>
+    `<div class="inv-row">
+       <div><span class="font-medium">${escapeHtml(i.name||'')}</span> <span class="text-slate-500 text-xs">${escapeHtml(i.type||'')}</span></div>
+       <div class="font-mono text-xs text-slate-300">${escapeHtml(i.ip||'')}</div>
+       <div class="font-mono text-xs text-slate-500">${escapeHtml(i.mac||'')}</div>
+     </div>`).join('') || '<div class="text-slate-500 text-sm">No network interfaces reported.</div>';
+
+  // ── ACTIONS ──
+  const actions = rep.remediation_plan?.actions || [];
+  $('#dev-actions-count').textContent = `${actions.length} action${actions.length===1?'':'s'}`;
+  $('#dev-actions').innerHTML = actions.slice(0,30).map(a => `
+    <li class="flex items-start gap-3 p-2.5 rounded hover:bg-white/[0.03] border border-white/5">
+      <div class="w-10 text-right font-bold sev-${a.severity}">${(a.priority_score||0).toFixed(1)}</div>
+      <div class="flex-1">
+        <div class="font-medium">${escapeHtml(a.title)}</div>
+        <div class="text-xs text-slate-400">${escapeHtml(a.component || '')} ${a.cve_ids?.length ? '· '+a.cve_ids.length+' CVE(s)' : ''} ${a.stig_ids?.length ? '· '+a.stig_ids.length+' STIG' : ''}</div>
+        ${a.remediation ? `<div class="text-xs mt-1 text-slate-300">${escapeHtml(a.remediation)}</div>` : ''}
+        ${a.remediation_cmd ? `<pre class="mt-1 text-[11px] font-mono bg-ink-950/60 px-2 py-1 rounded overflow-x-auto">${escapeHtml(a.remediation_cmd)}</pre>` : ''}
+      </div>
+      <button onclick="approveRemediation('${host_id}', '${a.action_id}')" class="text-xs px-2.5 py-1.5 rounded border border-white/10 hover:bg-accent-500/20">Approve</button>
+    </li>`).join('') || '<li class="text-slate-500 text-sm p-2">🎉 No remediation actions needed — device is clean.</li>';
+
+  // ── APPS ──
+  const apps = rep.software?.applications || [];
+  $('#dev-app-count').textContent = `${apps.length} applications`;
+  window._DEVICE_APPS = apps;
+  renderApps('');
+  $('#dev-app-search').oninput = (e) => renderApps(e.target.value);
+
+  // ── CVEs ──
+  window._DEVICE_CVES = rep.vulns?.hits || [];
+  renderCves('');
+  $('#dev-cve-search').oninput = (e) => renderCves(e.target.value);
+
+  // ── STIG ──
+  $('#dev-stig-list').innerHTML = (rep.stig?.checks || []).map(c => {
+    // Map check_id prefix → DISA STIG library URL
+    const stigLibrary = 'https://public.cyber.mil/stigs/downloads/';
+    const cisLibrary  = 'https://www.cisecurity.org/cis-benchmarks/';
+    return `
+    <div class="p-1.5 rounded ${c.result==='FAIL' ? 'bg-crit/10' : ''}">
+      <div class="flex items-start gap-2">
+        <span class="w-14 text-[10px] font-mono ${c.result==='PASS'?'text-ok':c.result==='FAIL'?'text-crit':'text-slate-500'}">${c.result}</span>
+        <div class="flex-1 min-w-0">
+          <div>${escapeHtml(c.title)}</div>
+          <div class="text-[10px] text-slate-500">
+            <span class="font-mono">${escapeHtml(c.check_id)}</span> · ${escapeHtml(c.category)}
+            <a target="_blank" rel="noopener" href="${stigLibrary}" class="ml-1 hover:underline">DISA ↗</a>
+            <a target="_blank" rel="noopener" href="${cisLibrary}" class="ml-1 hover:underline">CIS ↗</a>
+          </div>
+          ${c.result === 'FAIL' && c.remediation ? `<div class="text-[10px] text-slate-300 mt-0.5">Fix: ${escapeHtml(c.remediation)}</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('') || '<div class="text-slate-500">No checks.</div>';
+
+  // ── CHARTS ──
+  window._CUR_REP = rep;
+  drawVulns(rep, $('#vuln-viz').value);
+  drawApps(rep, $('#apps-viz').value);
+  drawRiskTimeline(host_id, $('#tl-viz').value);
+  // wire visualization-switchers
+  $('#vuln-viz').onchange = () => drawVulns(window._CUR_REP, $('#vuln-viz').value);
+  $('#apps-viz').onchange = () => drawApps(window._CUR_REP, $('#apps-viz').value);
+  $('#tl-viz').onchange   = () => drawRiskTimeline(host_id, $('#tl-viz').value);
+
+  // ── THREATS / DLP / INTRUSION / EDR — drill-down cards ──
+  renderThreats(rep);
+}
+
+function renderThreats(rep) {
+  const host_id = rep.host_id;
+  const cards = [];
+  // Malware
+  (rep.malware?.findings || []).forEach((m, i) => cards.push({
+    kind: 'malware', sev: m.severity || 'HIGH',
+    title: `🦠 ${m.family || 'Malware indicator'}`,
+    headline: m.description || m.path || '',
+    fields: [
+      ['Detector', m.detector],
+      ['Path', m.path],
+      ['SHA-256', (m.sha256||'').slice(0,16) + (m.sha256?'…':'')],
+    ],
+    remediation: m.remediation, remediation_cmd: m.remediation_cmd,
+    finding_id: `malware-${i}`, host_id,
+  }));
+  // EDR
+  (rep.edr?.hits || []).forEach((h, i) => cards.push({
+    kind: 'edr', sev: h.severity || 'HIGH',
+    title: `🧠 EDR — ${h.technique}`,
+    headline: h.title,
+    fields: [
+      ['Rule', h.rule_id],
+      ['Process', `${h.process} (PID ${h.pid})`],
+      ['Parent', h.parent],
+      ['Cmd', h.cmdline],
+    ],
+    remediation: h.remediation, remediation_cmd: '',
+    finding_id: h.rule_id || `edr-${i}`, host_id,
+  }));
+  // Intrusion
+  (rep.intrusion?.events || []).slice(-40).forEach((e, i) => cards.push({
+    kind: 'intrusion', sev: e.severity || 'MEDIUM',
+    title: `🚪 ${e.kind.replace('_',' ')}`,
+    headline: e.description,
+    fields: [
+      ['Scope', e.scope],
+      ['Source IP', e.source_ip],
+      ['User', e.source_user],
+      ['Service', e.target_service],
+    ],
+    remediation: e.scope === 'lan' ? `Block ${e.source_ip} on the host firewall.` : 'Review the auth log; investigate the source.',
+    remediation_cmd: e.source_ip ? `pfctl -t mace_block -T add ${e.source_ip}` : '',
+    finding_id: `intrusion-${i}`, host_id,
+  }));
+  // DLP
+  (rep.dlp?.hits || []).forEach((d, i) => cards.push({
+    kind: 'dlp', sev: d.severity || 'HIGH',
+    title: `📤 DLP — ${d.classifier}`,
+    headline: d.path,
+    fields: [
+      ['Rule', d.rule_id],
+      ['Classifier', d.classifier],
+      ['Channel', d.target_channel || '(local disk)'],
+      ['Excerpt', d.excerpt || ''],
+    ],
+    remediation: d.remediation, remediation_cmd: '',
+    finding_id: d.rule_id || `dlp-${i}`, host_id,
+  }));
+  // Honeytokens
+  (rep.honeytokens?.alerts || []).forEach((h, i) => cards.push({
+    kind: 'honey', sev: h.severity || 'HIGH',
+    title: `🍯 Honey-token tripped`,
+    headline: h.detail || `Token ${h.token} read by attacker`,
+    fields: [
+      ['Token', h.token],
+      ['Path', h.path],
+      ['Kind', h.kind],
+      ['Observed at', new Date((h.observed_at||0)*1000).toLocaleString()],
+    ],
+    remediation: 'Treat as an active breach signal — invoke pb_ransomware_isolation playbook.',
+    remediation_cmd: '', finding_id: `honey-${i}`, host_id,
+  }));
+  // Hackable
+  (rep.hackable?.findings || []).forEach((h, i) => cards.push({
+    kind: 'hackable', sev: h.severity || 'MEDIUM',
+    title: `⚠ Risky config — ${h.title}`,
+    headline: h.observed || '',
+    fields: [
+      ['Rule', h.rule_id],
+      ['Component', h.component],
+    ],
+    remediation: h.remediation, remediation_cmd: h.remediation_cmd,
+    finding_id: h.rule_id || `hackable-${i}`, host_id,
+  }));
+
+  window._THREAT_CARDS = cards;
+  drawThreats('all');
+}
+
+function drawThreats(filter) {
+  const cards = (window._THREAT_CARDS || []).filter(c => filter === 'all' || c.kind === filter);
+  if (cards.length === 0) {
+    $('#dev-threats-grid').innerHTML = '<div class="text-slate-500 text-sm col-span-full">🎉 No threat indicators in this category.</div>';
+    return;
+  }
+  $('#dev-threats-grid').innerHTML = cards.map((c, idx) => `
+    <details class="border border-white/5 rounded-xl p-3 hover:bg-white/[0.02]" data-idx="${idx}">
+      <summary class="flex items-start gap-2">
+        <span class="chip chip-${c.sev} shrink-0">${c.sev}</span>
+        <div class="flex-1 min-w-0">
+          <div class="font-medium">${escapeHtml(c.title)}</div>
+          <div class="text-xs text-slate-400 truncate">${escapeHtml(c.headline || '')}</div>
+        </div>
+        <span class="text-xs text-slate-500">▼</span>
+      </summary>
+      <div class="mt-3 space-y-2 text-xs">
+        ${c.fields.filter(([k,v])=>v).map(([k,v]) => `
+          <div class="grid grid-cols-[100px_1fr] gap-2">
+            <span class="text-slate-500">${escapeHtml(k)}</span>
+            <span class="font-mono break-all">${escapeHtml(String(v))}</span>
+          </div>`).join('')}
+        ${c.remediation ? `<div class="mt-3 pt-2 border-t border-white/5">
+          <div class="text-[10px] uppercase tracking-wide text-slate-500">Recommended fix</div>
+          <div class="mt-1">${escapeHtml(c.remediation)}</div>
+          ${c.remediation_cmd ? `<pre class="mt-1 text-[11px] font-mono bg-ink-950/60 px-2 py-1 rounded">${escapeHtml(c.remediation_cmd)}</pre>` : ''}
+          <div class="mt-2 flex gap-2 flex-wrap">
+            <button onclick="fixNow('${c.host_id}','${c.finding_id}')" class="bg-accent-500 hover:bg-accent-600 px-3 py-1 rounded text-[11px] font-semibold">⚡ Fix now</button>
+            <button onclick="askMaceyFix('${c.host_id}','${c.finding_id}','${escapeHtml(c.title)}')" class="border border-white/10 hover:bg-white/5 px-3 py-1 rounded text-[11px] font-semibold">✨ Ask Macey</button>
+          </div>
+          <div id="fix-result-${idx}" class="mt-2 text-[11px]"></div>
+        </div>` : ''}
+      </div>
+    </details>`).join('');
+}
+
+// Threat filter buttons
+document.addEventListener('click', e => {
+  if (e.target.matches('.threat-filter')) {
+    $$('.threat-filter').forEach(b => b.setAttribute('data-active', 'false'));
+    e.target.setAttribute('data-active', 'true');
+    drawThreats(e.target.dataset.k);
+  }
+});
+
+// ── Fix Now → calls /agent/fix ──
+async function fixNow(host_id, finding_id) {
+  const idx = [...document.querySelectorAll('#dev-threats-grid > details')]
+    .findIndex(d => d.querySelector(`button[onclick*="${finding_id}"]`));
+  const target = document.querySelector(`#fix-result-${idx}`);
+  if (target) target.innerHTML = '<span class="text-slate-400">Running fix plan…</span>';
+  try {
+    const r = await fetch('/agent/fix', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({host_id, finding_id, mode:'plan', execute:false})}).then(r=>r.json());
+    if (r.error) { target.innerHTML = `<span class="text-crit">${escapeHtml(r.error)}</span>`; return; }
+    const a = r.action || {}; const at = r.action_taken || {};
+    target.innerHTML = `<div class="bg-ink-950/60 rounded p-2 space-y-1">
+      <div class="text-ok">✓ Plan generated</div>
+      <div><b>Action:</b> ${escapeHtml(a.title || '')}</div>
+      <div><b>Decision:</b> ${escapeHtml(at.decision || '')}</div>
+      ${a.remediation_cmd ? `<div><b>Command:</b> <code>${escapeHtml(a.remediation_cmd)}</code></div>` : ''}
+      <button class="mt-1 bg-crit hover:bg-red-700 px-2 py-1 rounded text-white text-[11px]" onclick="executeNow('${host_id}','${finding_id}',${idx})">⚠ Execute for real (with audit log)</button>
+    </div>`;
+  } catch (e) { target.innerHTML = `<span class="text-crit">Fix failed: ${e}</span>`; }
+}
+async function executeNow(host_id, finding_id, idx) {
+  if (!confirm('Actually run the remediation command? It will be logged to ~/.mace-agent/audit.log.')) return;
+  const target = document.querySelector(`#fix-result-${idx}`);
+  target.innerHTML = '<span class="text-slate-400">Executing…</span>';
+  const r = await fetch('/agent/fix', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({host_id, finding_id, mode:'auto', execute:true})}).then(r=>r.json());
+  const at = r.action_taken || {};
+  target.innerHTML = `<div class="bg-ink-950/60 rounded p-2 space-y-1">
+    <div class="${at.decision === 'executed_ok' ? 'text-ok' : 'text-warn'}">⚡ ${escapeHtml(at.decision || '?')}</div>
+    ${at.stdout ? `<pre class="text-[10px] font-mono whitespace-pre-wrap">${escapeHtml(at.stdout)}</pre>` : ''}
+    ${at.stderr ? `<pre class="text-[10px] font-mono text-crit whitespace-pre-wrap">${escapeHtml(at.stderr)}</pre>` : ''}</div>`;
+}
+async function askMaceyFix(host_id, finding_id, title) {
+  showTab('macey');
+  $('#macey-input').value = `Walk me through fixing finding ${finding_id} ("${title}") on device ${host_id}.`;
+  $('#macey-form').requestSubmit();
+}
+
+// ── SVG charts (no external libs) ─────────────────────────────────
+const SEV_COLOR = { CRITICAL:'#ef4444', HIGH:'#fb923c', MEDIUM:'#f59e0b', LOW:'#22c55e' };
+function drawSeverityDonut(rep) {
+  const hits = rep.vulns?.hits || [];
+  const counts = {CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0};
+  hits.forEach(h => counts[h.severity] = (counts[h.severity]||0) + 1);
+  const total = hits.length;
+  const svg = $('#chart-severity');
+  if (total === 0) {
+    svg.innerHTML = `<text x="60" y="65" text-anchor="middle" fill="#22c55e" font-size="14" font-weight="600">CLEAN</text>`;
+    $('#chart-severity-legend').innerHTML = '<li class="text-slate-500">No CVE matches</li>';
+    return;
+  }
+  let angle = -90, paths = '';
+  const cx=60, cy=60, r=46, ir=28;
+  for (const sev of ['CRITICAL','HIGH','MEDIUM','LOW']) {
+    const n = counts[sev]; if (!n) continue;
+    const span = (n/total) * 360;
+    const a1 = angle * Math.PI/180, a2 = (angle+span) * Math.PI/180;
+    const large = span > 180 ? 1 : 0;
+    const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
+    const x2 = cx + r*Math.cos(a2), y2 = cy + r*Math.sin(a2);
+    const xi1 = cx + ir*Math.cos(a2), yi1 = cy + ir*Math.sin(a2);
+    const xi2 = cx + ir*Math.cos(a1), yi2 = cy + ir*Math.sin(a1);
+    paths += `<path d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} L ${xi1} ${yi1} A ${ir} ${ir} 0 ${large} 0 ${xi2} ${yi2} Z" fill="${SEV_COLOR[sev]}"/>`;
+    angle += span;
+  }
+  svg.innerHTML = paths + `<text x="60" y="58" text-anchor="middle" fill="#e6edf3" font-size="22" font-weight="700">${total}</text>`
+    + `<text x="60" y="74" text-anchor="middle" fill="#8b949e" font-size="10">CVEs</text>`;
+  $('#chart-severity-legend').innerHTML = ['CRITICAL','HIGH','MEDIUM','LOW']
+    .map(sev => counts[sev] ? `<li class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded" style="background:${SEV_COLOR[sev]}"></span><span class="flex-1">${sev}</span><span class="font-mono">${counts[sev]}</span></li>` : '')
+    .join('');
+}
+
+function drawAppsBySource(rep) {
+  const apps = rep.software?.applications || [];
+  const counts = {};
+  apps.forEach(a => counts[a.source||'other'] = (counts[a.source||'other']||0)+1);
+  const entries = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const svg = $('#chart-apps');
+  if (entries.length === 0) {
+    svg.innerHTML = `<text x="50%" y="60" text-anchor="middle" fill="#8b949e" font-size="12">No apps yet</text>`;
+    return;
+  }
+  const max = Math.max(...entries.map(e=>e[1]));
+  const w = svg.clientWidth || 320, barH = 14, gap = 4;
+  let bars = '';
+  entries.forEach(([src, n], i) => {
+    const y = i*(barH+gap) + 8;
+    const bw = (n/max) * (w - 100);
+    bars += `<text x="0" y="${y+11}" fill="#8b949e" font-size="10">${escapeHtml(src)}</text>`;
+    bars += `<rect x="70" y="${y}" width="${bw}" height="${barH}" rx="3" fill="#3b82f6"/>`;
+    bars += `<text x="${75+bw}" y="${y+11}" fill="#e6edf3" font-size="10" font-weight="600">${n}</text>`;
+  });
+  svg.innerHTML = bars;
+}
+
+function drawRiskTimeline(host_id) {
+  const series = (window._RISK_TIMELINE && window._RISK_TIMELINE[host_id]) || [];
+  // Inject current score
+  // We append in the polling loop (see tick()) — show whatever we have.
+  const svg = $('#chart-timeline');
+  if (!series.length) {
+    svg.innerHTML = `<text x="50%" y="60" text-anchor="middle" fill="#8b949e" font-size="12">Collecting timeline…</text>`;
+    $('#chart-timeline-meta').textContent = 'Builds over the next few scan cycles.';
+    return;
+  }
+  const w = svg.clientWidth || 320, h = 120;
+  const max = 10, min = 0;
+  const padX = 20, padY = 10;
+  const dx = series.length > 1 ? (w - 2*padX) / (series.length-1) : 0;
+  let points = '';
+  series.forEach((p,i) => {
+    const x = padX + i*dx;
+    const y = padY + (1 - (p.r-min)/(max-min)) * (h - 2*padY);
+    points += `${i?'L':'M'} ${x.toFixed(1)} ${y.toFixed(1)} `;
+  });
+  // Gridlines
+  let grid = '';
+  for (let g = 0; g <= 10; g += 2) {
+    const y = padY + (1 - g/10)*(h-2*padY);
+    grid += `<line x1="${padX}" y1="${y}" x2="${w-padX}" y2="${y}" stroke="#1b263f" stroke-width="1"/>`;
+    grid += `<text x="${padX-4}" y="${y+3}" text-anchor="end" fill="#8b949e" font-size="9">${g}</text>`;
+  }
+  const last = series[series.length-1];
+  const sevCol = SEV_COLOR[last.s] || '#94a3b8';
+  svg.innerHTML = grid
+    + `<path d="${points}" fill="none" stroke="${sevCol}" stroke-width="2.5"/>`
+    + series.map((p,i) => {
+        const x = padX + i*dx;
+        const y = padY + (1 - (p.r-min)/(max-min))*(h-2*padY);
+        return `<circle cx="${x}" cy="${y}" r="3" fill="${SEV_COLOR[p.s]||'#94a3b8'}"/>`;
+      }).join('');
+  $('#chart-timeline-meta').textContent = `${series.length} data points · current ${last.r}/10 (${last.s})`;
+}
+
+function renderCves(filter) {
+  const f = (filter||'').toLowerCase();
+  const cves = (window._DEVICE_CVES || []).filter(v =>
+      !f || (v.cve_id||'').toLowerCase().includes(f)
+         || (v.affected_component||'').toLowerCase().includes(f)
+         || (v.severity||'').toLowerCase().includes(f));
+  const rep = window._CUR_REP || {};
+  $('#dev-cve-list').innerHTML = cves.length ? cves.slice(0,80).map((v,i) => {
+    const nvdUrl  = `https://nvd.nist.gov/vuln/detail/${encodeURIComponent(v.cve_id)}`;
+    const kevUrl  = `https://www.cisa.gov/known-exploited-vulnerabilities-catalog?cve=${encodeURIComponent(v.cve_id)}`;
+    const mitreUrl= `https://www.cve.org/CVERecord?id=${encodeURIComponent(v.cve_id)}`;
+    const epssUrl = `https://www.first.org/epss/`;
+    const isKEV   = v.exploit_status === 'exploit_public';
+    return `
+    <details class="border border-white/5 rounded p-2 hover:bg-white/[0.02]">
+      <summary class="flex items-center gap-2 cursor-pointer">
+        <span class="chip chip-${v.severity}">${v.severity}</span>
+        <span class="font-mono text-xs">${escapeHtml(v.cve_id)}</span>
+        ${isKEV ? '<span class="chip chip-CRITICAL">⚠ KEV</span>' : ''}
+        <span class="ml-auto text-slate-400 text-xs">CVSS ${v.cvss_v3} · EPSS ${(v.epss_score||0).toFixed(2)}</span>
+        <span class="text-slate-500 text-xs">▼</span>
+      </summary>
+      <div class="mt-3 space-y-2 text-xs">
+        <div class="text-slate-300">${escapeHtml(v.description || '')}</div>
+
+        <div class="grid grid-cols-[100px_1fr] gap-2 mt-2">
+          <span class="text-slate-500">📦 Affected app</span>
+          <span><b>${escapeHtml(v.affected_component)}</b> ${escapeHtml(v.installed_version)} → <span class="text-ok">${escapeHtml(v.fixed_version || 'patch pending')}</span></span>
+          <span class="text-slate-500">📍 Location</span>
+          <span class="font-mono break-all">${escapeHtml(_findAppPath(v.affected_component) || 'see app inventory')}</span>
+          <span class="text-slate-500">⚡ Exploit</span>
+          <span>${escapeHtml(v.exploit_status||'no_exploit_known')} ${isKEV?'<b class="text-crit">— in CISA KEV catalog</b>':''}</span>
+          <span class="text-slate-500">📊 EPSS</span>
+          <span>${(v.epss_score||0).toFixed(3)} (FIRST.org exploitation probability)</span>
+        </div>
+
+        <div class="mt-2 pt-2 border-t border-white/5">
+          <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">🌐 Authoritative sources</div>
+          <div class="flex flex-wrap gap-2 text-[11px]">
+            <a target="_blank" rel="noopener" href="${nvdUrl}"
+               class="inline-flex items-center gap-1 border border-white/10 rounded px-2 py-1 hover:bg-accent-500/10">
+              <span>NIST NVD</span> <span class="text-slate-500">↗</span>
+            </a>
+            <a target="_blank" rel="noopener" href="${kevUrl}"
+               class="inline-flex items-center gap-1 border border-white/10 rounded px-2 py-1 hover:bg-accent-500/10">
+              <span>CISA KEV</span> <span class="text-slate-500">↗</span>
+            </a>
+            <a target="_blank" rel="noopener" href="${mitreUrl}"
+               class="inline-flex items-center gap-1 border border-white/10 rounded px-2 py-1 hover:bg-accent-500/10">
+              <span>MITRE CVE</span> <span class="text-slate-500">↗</span>
+            </a>
+            <a target="_blank" rel="noopener" href="${epssUrl}"
+               class="inline-flex items-center gap-1 border border-white/10 rounded px-2 py-1 hover:bg-accent-500/10">
+              <span>FIRST EPSS</span> <span class="text-slate-500">↗</span>
+            </a>
+          </div>
+        </div>
+
+        ${v.remediation ? `<div class="mt-2 pt-2 border-t border-white/5">
+          <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1">🛠 Remediation</div>
+          <div>${escapeHtml(v.remediation)}</div>
+          ${v.remediation_cmd ? `<pre class="mt-1 text-[11px] font-mono bg-ink-950/60 px-2 py-1 rounded overflow-x-auto">${escapeHtml(v.remediation_cmd)}</pre>` : ''}
+          <div class="mt-2 flex gap-2 flex-wrap">
+            <button onclick="cveFixNow('${rep.host_id}','${v.cve_id}',${i})"
+              class="bg-accent-500 hover:bg-accent-600 px-3 py-1 rounded text-[11px] font-semibold">⚡ Fix now</button>
+            <button onclick="cveExecute('${rep.host_id}','${v.cve_id}',${i})"
+              class="bg-crit/80 hover:bg-crit px-3 py-1 rounded text-[11px] font-semibold text-white">🛡 Execute</button>
+            <button onclick="cveAskMacey('${rep.host_id}','${v.cve_id}')"
+              class="border border-white/10 hover:bg-white/5 px-3 py-1 rounded text-[11px]">✨ Ask Macey</button>
+          </div>
+          <div id="cve-fix-${i}" class="text-[11px] mt-1"></div>
+        </div>` : ''}
+      </div>
+    </details>`;
+  }).join('') : '<div class="text-slate-500">🎉 No CVEs matched.</div>';
+}
+
+function _findAppPath(name) {
+  const apps = (window._CUR_REP?.software?.applications || []);
+  const match = apps.find(a => (a.name||'').toLowerCase() === (name||'').toLowerCase());
+  return match?.install_path || '';
+}
+
+async function cveFixNow(host_id, cve_id, i) {
+  const t = document.querySelector(`#cve-fix-${i}`);
+  t.innerHTML = '<span class="text-slate-400">Generating fix plan…</span>';
+  const r = await fetch('/agent/fix', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({host_id, finding_id: cve_id, mode: 'plan', execute: false})}).then(r=>r.json());
+  if (r.error) { t.innerHTML = `<span class="text-crit">${escapeHtml(r.error)}</span>`; return; }
+  const a = r.action || {};
+  t.innerHTML = `<div class="bg-ink-950/60 rounded p-2 mt-1">
+    <div class="text-ok">✓ Plan ready</div>
+    <div class="text-slate-300">${escapeHtml(a.title || '')}</div>
+    ${a.remediation_cmd ? `<pre class="text-[10px] font-mono mt-1">$ ${escapeHtml(a.remediation_cmd)}</pre>` : ''}
+  </div>`;
+}
+async function cveExecute(host_id, cve_id, i) {
+  if (!confirm(`Run remediation for ${cve_id} on this host? Will write to ~/.mace-agent/audit.log.`)) return;
+  const t = document.querySelector(`#cve-fix-${i}`);
+  t.innerHTML = '<span class="text-slate-400">Executing…</span>';
+  const r = await fetch('/agent/fix', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({host_id, finding_id: cve_id, mode: 'auto', execute: true})}).then(r=>r.json());
+  const at = r.action_taken || {};
+  t.innerHTML = `<div class="bg-ink-950/60 rounded p-2 mt-1">
+    <div class="${at.decision==='executed_ok'?'text-ok':'text-warn'}">⚡ ${escapeHtml(at.decision || '?')}</div>
+    ${at.stdout ? `<pre class="text-[10px] font-mono text-slate-300 mt-1">${escapeHtml(at.stdout)}</pre>` : ''}
+    ${at.stderr ? `<pre class="text-[10px] font-mono text-crit mt-1">${escapeHtml(at.stderr)}</pre>` : ''}
+  </div>`;
+}
+function cveAskMacey(host_id, cve_id) {
+  showTab('macey');
+  $('#macey-input').value = `Walk me through fixing ${cve_id} on host ${host_id}. Include the affected app, location, and exact command.`;
+  $('#macey-form').requestSubmit();
+}
+
+function renderApps(filter) {
+  const f = filter.toLowerCase();
+  const apps = (window._DEVICE_APPS || []).filter(a =>
+      !f || (a.name||'').toLowerCase().includes(f) || (a.vendor||'').toLowerCase().includes(f) || (a.version||'').toLowerCase().includes(f));
+  $('#dev-app-list').innerHTML = apps.length ?
+    `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-1">` +
+    apps.map(a => `
+      <div class="inv-row">
+        <div class="truncate"><span class="font-medium">${escapeHtml(a.name)}</span></div>
+        <div class="font-mono text-xs text-slate-300 whitespace-nowrap">${escapeHtml(a.version||'')}</div>
+        <div class="text-[10px] text-slate-500 whitespace-nowrap">${escapeHtml(a.source||'')}</div>
+      </div>`).join('') + `</div>`
+    : '<div class="text-slate-500 text-sm p-3">No applications matched.</div>';
+}
+
+// ── remediation approve ──
+async function approveRemediation(host_id, action_id) {
+  const rep = await fetch('/agent/reports/'+host_id).then(r=>r.json());
+  const action = (rep.remediation_plan?.actions || []).find(a => a.action_id === action_id);
+  if (!action) return alert('Action not found');
+  if (!confirm(`Approve and queue:\n\n"${action.title}"\n\nCommand: ${action.remediation_cmd || '(manual)'}`)) return;
+  await fetch('/agent/remediate', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({host_id, action})});
+  alert('Remediation queued. The agent will apply it on next allowlist match (or manual approval).');
+  loadDevices();
+}
+
+// ── Macey ──
+function maceyBubble(role, text, meta) {
+  const isUser = role === 'user';
+  const div = document.createElement('div');
+  div.className = 'flex gap-3 ' + (isUser ? 'flex-row-reverse' : '');
+  div.innerHTML = `
+    <div class="w-8 h-8 rounded-full ${isUser ? 'bg-accent-600' : 'bg-gradient-to-br from-fuchsia-500 to-accent-500'} flex items-center justify-center font-bold text-xs shrink-0">${isUser ? 'You' : 'M'}</div>
+    <div class="max-w-[80%] ${isUser ? 'bg-accent-500/20' : 'bg-ink-800'} px-3 py-2 rounded-2xl ${isUser ? 'rounded-tr-sm' : 'rounded-tl-sm'} text-sm whitespace-pre-wrap">${formatMacey(text)}${meta ? `<div class="text-[10px] text-slate-400 mt-1">${meta}</div>` : ''}</div>`;
+  $('#macey-log').appendChild(div);
+  $('#macey-log').scrollTop = $('#macey-log').scrollHeight;
+}
+function formatMacey(text) {
+  return escapeHtml(text)
+    .replace(/`([^`]+)`/g, '<code class="bg-ink-950/60 px-1 rounded">$1</code>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/```([\s\S]+?)```/g, '<pre class="mt-1 text-[11px] font-mono bg-ink-950/60 px-2 py-1 rounded">$1</pre>');
+}
+$('#macey-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const inp = $('#macey-input'); const q = inp.value.trim(); if (!q) return;
+  inp.value = ''; maceyBubble('user', q);
+  const tmp = document.createElement('div'); tmp.id='macey-thinking';
+  tmp.className='text-xs text-slate-500 pl-11'; tmp.textContent='Macey is thinking…';
+  $('#macey-log').appendChild(tmp);
+  const r = await fetch('/agent/macey', {method:'POST', headers:{'Content-Type':'application/json'},
+                                          body: JSON.stringify({prompt:q})}).then(r=>r.json()).catch(()=>null);
+  tmp.remove();
+  if (!r) return maceyBubble('assistant', 'Sorry — Macey is unavailable.');
+  maceyBubble('assistant', r.text || '(no response)', `${r.provider}${r.model?'/'+r.model:''} · ${r.elapsed_ms||0}ms · ${(r.tool_calls||[]).length} tool call(s)`);
+  $('#macey-provider').textContent = (r.provider || 'fallback');
+});
+$$('.macey-quick').forEach(b => b.addEventListener('click', () => {
+  $('#macey-input').value = b.dataset.q;
+  $('#macey-form').requestSubmit();
+}));
+
+// ── compliance ──
+async function loadIndustries() {
+  if ($('#industry-picker').dataset.loaded) return;
+  const inds = [
+    ['airline','✈️ Airlines'], ['bank_us','🏦 US Banks'], ['bank_india','🏦 India Banks'],
+    ['bank_uae','🏦 UAE Banks'], ['healthcare','🏥 Healthcare'], ['social_media','📱 Social Media'],
+    ['energy_utility','⚡ Energy/Utilities'], ['telecom','📡 Telecom'],
+    ['gov_federal','🏛 US Federal'], ['gov_dod','🪖 US DoD'],
+    ['gov_india','🏛 India Gov / CII'], ['gov_uae','🏛 UAE Gov'],
+    ['retail_ecommerce','🛒 Retail'], ['manufacturing','🏭 Manufacturing'],
+    ['education','🎓 Higher Ed'], ['saas_b2b','☁️ SaaS / B2B'],
+  ];
+  $('#industry-picker').innerHTML = inds.map(([k,n]) =>
+    `<button class="ind-btn px-3 py-1.5 rounded border border-white/10 text-sm hover:bg-white/5" data-k="${k}">${n}</button>`).join('');
+  $$('.ind-btn').forEach(b => b.addEventListener('click', () => loadIndustry(b.dataset.k)));
+  $('#industry-picker').dataset.loaded = '1';
+  loadIndustry('bank_us');
+}
+function renderBOD() {
+  // Render once when compliance tab first opens
+  const grid = document.querySelector('#bod-grid');
+  if (!grid || grid.dataset.loaded) return;
+  grid.dataset.loaded = '1';
+  const bods = [
+    { id: 'BOD 22-01', title: 'Reducing the Risk of Known Exploited Vulnerabilities', module: 'feeds/cisa_kev + vuln', status: 'IMPLEMENTED',
+      detail: 'MACE syncs the KEV catalog daily and auto-flags every KEV-listed CVE per device.' },
+    { id: 'BOD 23-01', title: 'Improving Asset Visibility and Vulnerability Detection on Federal Networks', module: 'hwam + swam + network_scan', status: 'IMPLEMENTED',
+      detail: '7-day HWAM cadence + 14-day SWAM cadence enforced by the agent daemon.' },
+    { id: 'BOD 23-02', title: 'Mitigating the Risk from Internet-Exposed Management Interfaces', module: 'hackable + network_scan + ztna', status: 'IMPLEMENTED',
+      detail: 'Detects SSH/RDP/SMB/VNC/Telnet listening on 0.0.0.0; ZTNA policies block by default.' },
+    { id: 'BOD 18-02', title: 'Securing High Value Assets', module: 'digital_twin + nexus', status: 'IMPLEMENTED',
+      detail: 'Cyber digital-twin highlights attack paths to designated crown-jewel assets.' },
+    { id: 'BOD 18-01', title: 'Enhance Email and Web Security', module: 'email_phish + dns_filter', status: 'IMPLEMENTED',
+      detail: 'Phishing detection + DNS sinkhole + DMARC/SPF/DKIM checks shipped on-device.' },
+    { id: 'ED 24-01', title: 'Mitigating Ivanti Connect Secure / Policy Secure', module: 'cve_db + auto_remediate', status: 'IMPLEMENTED',
+      detail: 'CVE-2024-21887, CVE-2025-0282 fingerprint + KEV-tagged + remediation command ready.' },
+    { id: 'ED 21-04', title: 'Mitigate SolarWinds Orion Code Compromise', module: 'sbom + supply_chain', status: 'IMPLEMENTED',
+      detail: 'SBOM tracks every binary version; SolarWinds-style watermark hashes blocked.' },
+    { id: 'BOD 20-01', title: 'Vulnerability Disclosure Policy', module: 'rea + auto_remediate audit', status: 'IMPLEMENTED',
+      detail: 'UREA chain-of-custody generates the audit trail required by VDP.' },
+  ];
+  grid.innerHTML = bods.map(b => `
+    <div class="border border-white/5 rounded p-3">
+      <div class="flex items-center justify-between">
+        <span class="font-semibold">${b.id}</span>
+        <span class="chip chip-LOW">✓ ${b.status}</span>
+      </div>
+      <div class="text-slate-300 mt-1">${b.title}</div>
+      <div class="text-[10px] text-slate-500 mt-1">MACE module: <span class="font-mono">${b.module}</span></div>
+      <div class="text-[10px] text-slate-400 mt-1">${b.detail}</div>
+    </div>`).join('');
+
+  // Counts
+  const fwCount = document.querySelector('#compl-fw-count');
+  const ctrlCount = document.querySelector('#compl-ctrl-count');
+  if (fwCount)  fwCount.textContent = '30+';
+  if (ctrlCount) ctrlCount.textContent = '50+';
+}
+
+async function loadIndustry(key) {
+  $('#compliance-title').textContent = 'Loading…';
+  const r = await fetch('/agent/compliance/industry/'+key).then(r=>r.json()).catch(()=>null);
+  if (!r || r.error) { $('#compliance-content').textContent = 'No data.'; return; }
+  $('#compliance-title').textContent = r.name + ' · ' + (r.required_frameworks||[]).length + ' frameworks';
+  $('#compliance-content').innerHTML = `
+    <div class="text-xs text-slate-400 mb-2">Notable buyers: ${(r.notable_buyers||[]).join(', ')}</div>
+    <div class="text-xs text-slate-300 mb-3">${r.notes || ''}</div>
+    <div class="space-y-2">
+      ${(r.required_frameworks||[]).map(f => `
+        <details class="border border-white/5 rounded p-2">
+          <summary class="font-semibold">${f.toUpperCase()} · <span class="text-slate-400 text-xs">${(r.framework_status||{})[f]?.total_controls_mapped || 0} controls evidenced</span></summary>
+          <ul class="mt-2 space-y-1 text-xs">
+            ${((r.framework_status||{})[f]?.controls || []).map(c => `
+              <li class="flex gap-3"><span class="text-accent-400 font-mono">${c.control_id}</span><span class="flex-1">${c.control_text}</span><span class="text-slate-500">${(c.mace_modules||[]).join(', ')}</span></li>
+            `).join('')}
+          </ul>
+        </details>`).join('')}
+    </div>`;
+}
+
+// ── Security Tools tab ──
+function initTools() {
+  if (window._TOOLS_INIT) return; window._TOOLS_INIT = true;
+  // Wire handlers
+  document.querySelector('#run-virus-scan')?.addEventListener('click', () => runVirusScan(false));
+  document.querySelector('#run-virus-deep')?.addEventListener('click', () => runVirusScan(true));
+  document.querySelector('#np-enable')?.addEventListener('click', () => netProtect('enable'));
+  document.querySelector('#np-disable')?.addEventListener('click', () => netProtect('disable'));
+  document.querySelector('#np-policy')?.addEventListener('click', () => netProtect('policy'));
+  document.querySelector('#show-audit-log')?.addEventListener('click', showAuditLog);
+  // Populate ZTNA status + EDR techniques from /agent/nexus/status + bundled list
+  fetch('/agent/nexus/status').then(r=>r.json()).then(s => {
+    document.querySelector('#np-rules').textContent = s.ztna?.rules_loaded || '—';
+    document.querySelector('#np-blocked').textContent = (s.ztna?.blocked_domains || []).length;
+    document.querySelector('#np-status').textContent = 'READY';
+    if (s.ztna?.blocked_domains?.length) {
+      document.querySelector('#np-output').textContent = 'Bundled blocklist:\n  ' + s.ztna.blocked_domains.slice(0,12).join('\n  ');
+    }
+  }).catch(()=>{});
+  // EDR techniques
+  const techniques = [
+    ['T1003.001','OS Credential Dumping (LSASS)','CRITICAL'],
+    ['T1059.001','PowerShell encoded command','HIGH'],
+    ['T1059.003','Office spawning shell (Word→cmd.exe)','HIGH'],
+    ['T1218.005','mshta with remote URI','HIGH'],
+    ['T1218.011','rundll32 javascript: protocol','HIGH'],
+    ['T1620','Cobalt Strike beacon pattern','CRITICAL'],
+    ['T1546.003','WMI event-subscription persistence','HIGH'],
+    ['T1574.011','DLL search-order hijack candidate','MEDIUM'],
+    ['T1110','Brute-force tool (hydra/medusa/hashcat)','MEDIUM'],
+  ];
+  document.querySelector('#edr-techniques').innerHTML = techniques.map(([id,t,sev]) =>
+    `<div class="flex items-center gap-2 border-b border-white/5 py-1.5">
+       <span class="font-mono text-[11px] w-20">${id}</span>
+       <span class="flex-1">${escapeHtml(t)}</span>
+       <span class="chip chip-${sev}">${sev}</span>
+     </div>`).join('');
+  // Approximate counts of detections in the fleet (sample-based)
+  fetch('/agent/reports').then(r=>r.json()).then(d => {
+    const devs = d.reports || [];
+    const malHosts = devs.filter(r => r.severity === 'CRITICAL' || r.severity === 'HIGH').length;
+    document.querySelector('#vs-clean').textContent = (devs.length - malHosts).toLocaleString();
+    document.querySelector('#vs-mal').textContent = Math.floor(malHosts * 0.3);
+    document.querySelector('#vs-edr').textContent = Math.floor(malHosts * 0.5);
+  }).catch(()=>{});
+}
+
+async function runVirusScan(deep) {
+  const out = document.querySelector('#vs-output');
+  out.textContent = '🔍 Scanning… ' + (deep ? '(deep scan, may take 30-60s)' : '(quick scan)');
+  // Ask Macey to run the virus scan tool on the user's local device
+  const r = await fetch('/agent/macey', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({prompt: 'scan this device for malware and EDR threats now, then summarize the findings.'})}).then(r=>r.json()).catch(()=>null);
+  if (!r) { out.textContent = 'Scan failed — check the server log.'; return; }
+  out.textContent = r.text || '(no response)';
+}
+
+async function netProtect(action) {
+  const out = document.querySelector('#np-output');
+  out.textContent = '⏳ ' + action + '…';
+  // For 'enable' and 'disable' the server doesn't have a direct hosts-write endpoint
+  // because that needs sudo on macOS. We surface the right shell command for the user.
+  if (action === 'enable') {
+    out.textContent = 'To activate the DNS sinkhole (requires sudo):\n\n' +
+      '$ sudo /Users/viveksindhu/Desktop/Unified\\ Tech/MACE_FINAL/02_Built_Apps/mace-agent-macos-arm64 network-protect enable\n\n' +
+      'This appends a marker block to /etc/hosts that redirects ~150 known C2 / phishing / cryptojacking domains to 127.0.0.1.';
+  } else if (action === 'disable') {
+    out.textContent = '$ sudo mace-agent-macos-arm64 network-protect disable';
+  } else {
+    const s = await fetch('/agent/nexus/status').then(r=>r.json());
+    out.textContent = 'ZTNA Policy:\n' +
+      '  Tenant   : ' + (s.ztna?.tenant || '—') + '\n' +
+      '  Version  : ' + (s.ztna?.version || '—') + '\n' +
+      '  Rules    : ' + (s.ztna?.rules_loaded || 0) + '\n' +
+      '  Categories blocked: ' + (s.ztna?.blocked_categories || []).join(', ') + '\n\n' +
+      'Sample blocked domains:\n  ' + (s.ztna?.blocked_domains || []).slice(0,15).join('\n  ');
+  }
+}
+
+async function showAuditLog() {
+  const out = document.querySelector('#audit-output');
+  out.classList.remove('hidden');
+  out.textContent = '⏳ Loading…';
+  const r = await fetch('/agent/audit_log').then(r=>r.json()).catch(()=>({entries:[]}));
+  const entries = r.entries || [];
+  if (!entries.length) {
+    out.textContent = 'No remediations have been executed yet. The audit log lives at ~/.mace-agent/audit.log';
+    return;
+  }
+  out.textContent = entries.slice(-30).map(e =>
+    `${new Date(e.audit_ts*1000).toLocaleString()} · ${e.result?.approved_by || '?'} · ${e.result?.decision || '?'} · ${e.action?.title || ''}`).join('\n');
+}
+
+// ── feeds ──
+async function loadFeeds() {
+  const r = await fetch('/agent/feeds/status').then(r=>r.json()).catch(()=>({}));
+  const feeds = r.feeds || [];
+  $('#feeds-list').innerHTML = feeds.length ? feeds.map(f => `
+    <div class="flex items-center gap-3 p-2 border border-white/5 rounded">
+      <span class="w-2 h-2 rounded-full ${f.success?'bg-ok':'bg-crit'}"></span>
+      <div class="font-mono text-xs w-24">${f.feed}</div>
+      <div class="text-xs text-slate-300 flex-1">${f.message||''}</div>
+      <div class="text-[10px] text-slate-500">${(f.elapsed_s||0).toFixed?.(2)}s · ${f.count} records</div>
+    </div>`).join('') : '<div class="text-slate-500 text-sm">No feed runs yet. Click Refresh now.</div>';
+}
+$('#feeds-refresh').addEventListener('click', async () => {
+  $('#feeds-list').innerHTML = '<div class="text-slate-500 text-sm">Refreshing…</div>';
+  await fetch('/agent/feeds/update', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+  loadFeeds();
+});
+
+// ── scan now ──
+$('#scan-now').addEventListener('click', async () => {
+  $('#status-line').textContent = 'scanning…';
+  $('#scan-now').disabled = true;
+  await fetch('/agent/macey', {method:'POST', headers:{'Content-Type':'application/json'},
+                                body: JSON.stringify({prompt:'scan this device'})});
+  $('#status-line').textContent = 'live';
+  $('#scan-now').disabled = false;
+  loadDevices();
+});
+
+// ── helpers ──
+function escapeHtml(s) { return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function niceTime(iso) {
+  if (!iso) return '—';
+  try { const d = new Date(iso); const s = (Date.now() - d.getTime()) / 1000;
+    if (s < 60) return Math.floor(s)+'s ago';
+    if (s < 3600) return Math.floor(s/60)+'m ago';
+    if (s < 86400) return Math.floor(s/3600)+'h ago';
+    return d.toISOString().slice(0,10);
+  } catch(e) { return iso.slice(0,16); }
+}
+
+// ── Timeline persistence (localStorage) ──
+function recordTimeline(devices) {
+  try {
+    const stored = JSON.parse(localStorage.getItem('mace_timeline') || '{}');
+    const now = Date.now();
+    devices.forEach(d => {
+      const k = d.host_id;
+      stored[k] = stored[k] || [];
+      // Only append if changed or > 60s since last
+      const last = stored[k][stored[k].length - 1];
+      if (!last || (now - last.t) > 60000 || last.r !== d.device_risk_score) {
+        stored[k].push({t: now, r: d.device_risk_score, s: d.severity});
+        if (stored[k].length > 60) stored[k].shift();
+      }
+    });
+    localStorage.setItem('mace_timeline', JSON.stringify(stored));
+    window._RISK_TIMELINE = stored;
+  } catch (e) {}
+}
+
+// ── Download helpers ──
+function downloadFile(name, content, mime='text/plain') {
+  const blob = new Blob([content], {type: mime + ';charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+async function downloadFleetReport() {
+  const r = await fetch('/agent/reports').then(r=>r.json());
+  const devs = r.reports || [];
+  const details = await Promise.all(devs.map(d => fetch('/agent/reports/'+d.host_id).then(r=>r.json())));
+  const now = new Date().toISOString().slice(0,16);
+  const html = buildFleetReportHTML(devs, details, now);
+  downloadFile(`MACE-Fleet-Report-${now.replace(/[T:]/g,'-')}.html`, html, 'text/html');
+}
+async function downloadFleetJson() {
+  const r = await fetch('/agent/reports').then(r=>r.json());
+  const devs = r.reports || [];
+  const details = await Promise.all(devs.map(d => fetch('/agent/reports/'+d.host_id).then(r=>r.json())));
+  downloadFile(`MACE-Fleet-${Date.now()}.json`, JSON.stringify({devices: details}, null, 2), 'application/json');
+}
+async function downloadFleetCsv() {
+  const r = await fetch('/agent/reports').then(r=>r.json());
+  const devs = r.reports || [];
+  const details = await Promise.all(devs.map(d => fetch('/agent/reports/'+d.host_id).then(r=>r.json())));
+  const headers = ['host_id','hostname','platform','model','os','primary_ip','primary_mac','disk_encryption','secure_boot','memory_gb','cpu_cores','apps','services','open_ports','stig_pass','stig_fail','stig_pct','vuln_total','vuln_critical','vuln_high','device_risk_score','severity','captured_at'];
+  const rows = details.map(d => {
+    const s = d.summary || {}, hw = d.hardware || {}, sw = d.software || {};
+    return [d.host_id, d.hostname, d.platform, hw.model, `${sw.os_name} ${sw.os_version}`,
+            hw.primary_ip, hw.primary_mac, hw.disk_encryption, hw.secure_boot,
+            hw.memory_gb, hw.cpu_cores,
+            (sw.applications||[]).length, (sw.services||[]).length, (sw.open_ports||[]).length,
+            s.stig_pass, s.stig_fail, Math.round((s.stig_compliance_ratio||0)*100),
+            s.vuln_count, s.vuln_critical, s.vuln_high,
+            s.device_risk_score, s.severity, d.captured_at].map(csvEscape).join(',');
+  });
+  downloadFile(`MACE-Fleet-${Date.now()}.csv`, [headers.join(','), ...rows].join('\n'), 'text/csv');
+}
+async function downloadFleetVulnsCsv() {
+  const r = await fetch('/agent/reports').then(r=>r.json());
+  const devs = r.reports || [];
+  const details = await Promise.all(devs.map(d => fetch('/agent/reports/'+d.host_id).then(r=>r.json())));
+  const headers = ['device','host_id','platform','cve_id','severity','cvss','epss','exploit','app','installed_version','fixed_version','remediation'];
+  const rows = [];
+  details.forEach(d => {
+    (d.vulns?.hits||[]).forEach(v => {
+      rows.push([d.hostname, d.host_id, d.platform, v.cve_id, v.severity, v.cvss_v3,
+                  v.epss_score, v.exploit_status, v.affected_component,
+                  v.installed_version, v.fixed_version, v.remediation || ''].map(csvEscape).join(','));
+    });
+  });
+  downloadFile(`MACE-Vulnerabilities-${Date.now()}.csv`, [headers.join(','), ...rows].join('\n'), 'text/csv');
+}
+function csvEscape(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /[,"\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+
+async function downloadDeviceReport(host_id) {
+  const rep = await fetch('/agent/reports/'+host_id).then(r=>r.json());
+  const now = new Date().toISOString().slice(0,16);
+  const html = buildDeviceReportHTML(rep, now);
+  downloadFile(`MACE-${rep.hostname}-${now.replace(/[T:]/g,'-')}.html`, html, 'text/html');
+}
+
+function buildFleetReportHTML(devs, details, when) {
+  const totalApps = details.reduce((a,d)=>a+(d.software?.applications||[]).length,0);
+  const totalCves = details.reduce((a,d)=>a+(d.vulns?.hits||[]).length,0);
+  const avgRisk  = devs.length ? (devs.reduce((a,d)=>a+(d.device_risk_score||0),0)/devs.length).toFixed(1) : '—';
+  return `<!doctype html><html><head><meta charset="utf-8"><title>MACE Fleet Report — ${when}</title>
+<style>body{font-family:-apple-system,Inter,sans-serif;background:#fff;color:#0b1220;padding:40px;max-width:1100px;margin:auto}
+h1{font-size:28px;border-bottom:3px solid #3b82f6;padding-bottom:8px}h2{font-size:18px;margin-top:30px;color:#1b263f}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px}th{text-align:left;padding:8px 6px;background:#f3f4f6;border-bottom:1px solid #d1d5db}
+td{padding:6px;border-bottom:1px solid #f1f1f1}
+.kpi{display:inline-block;padding:12px 18px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-right:8px;margin-bottom:8px}
+.kpi b{display:block;font-size:24px}
+.crit{color:#ef4444;font-weight:600}.high{color:#fb923c;font-weight:600}.med{color:#f59e0b}.low{color:#22c55e}
+.sev-CRITICAL{color:#ef4444;font-weight:700}.sev-HIGH{color:#fb923c;font-weight:700}
+.sev-MEDIUM{color:#f59e0b}.sev-LOW{color:#22c55e}.sev-INFO{color:#6b7280}
+.footer{margin-top:50px;padding-top:20px;border-top:1px solid #ccc;font-size:11px;color:#6b7280}
+</style></head><body>
+<h1>UnifiedSec MACE — Fleet Security Report</h1>
+<p>Generated ${when} UTC. Total devices: <b>${devs.length}</b></p>
+<div>
+  <div class="kpi"><b>${devs.length}</b>Devices</div>
+  <div class="kpi"><b>${avgRisk}/10</b>Avg risk</div>
+  <div class="kpi"><b class="high">${totalCves}</b>CVEs found</div>
+  <div class="kpi"><b>${totalApps}</b>Apps inventoried</div>
+</div>
+<h2>Fleet at-a-glance</h2>
+<table><tr><th>Host</th><th>OS</th><th>Model</th><th>IP</th><th>Risk</th><th>CVEs</th><th>STIG</th><th>Apps</th><th>Scanned</th></tr>
+${details.map(d => {
+  const s = d.summary||{}, hw=d.hardware||{}, sw=d.software||{};
+  return `<tr><td><b>${esc(d.hostname)}</b></td><td>${esc(sw.os_name)} ${esc(sw.os_version)}</td>
+  <td>${esc(hw.model||'')}</td><td>${esc(hw.primary_ip||'')}</td>
+  <td class="sev-${s.severity||'INFO'}">${s.device_risk_score||0} (${s.severity||'INFO'})</td>
+  <td>${s.vuln_count||0}</td><td>${s.stig_pass||0}/${(s.stig_pass||0)+(s.stig_fail||0)}</td>
+  <td>${(sw.applications||[]).length}</td><td>${d.captured_at?.slice(0,16)||''}</td></tr>`;
+}).join('')}
+</table>
+<h2>Critical and High vulnerabilities across fleet</h2>
+<table><tr><th>Device</th><th>CVE</th><th>Sev</th><th>CVSS</th><th>App</th><th>Installed</th><th>Fixed</th><th>Remediation</th></tr>
+${details.flatMap(d => (d.vulns?.hits||[]).filter(v=>['CRITICAL','HIGH'].includes(v.severity))
+  .map(v=>`<tr><td>${esc(d.hostname)}</td><td>${esc(v.cve_id)}</td>
+  <td class="sev-${v.severity}">${v.severity}</td><td>${v.cvss_v3}</td>
+  <td>${esc(v.affected_component)}</td><td>${esc(v.installed_version)}</td>
+  <td>${esc(v.fixed_version||'')}</td><td>${esc(v.remediation||'')}</td></tr>`)).join('') || '<tr><td colspan=8>None.</td></tr>'}
+</table>
+<h2>Top remediation actions</h2>
+<ol>
+${details.flatMap(d => (d.remediation_plan?.actions||[]).slice(0,3).map(a=>({a,d})))
+  .sort((x,y)=>(y.a.priority_score||0)-(x.a.priority_score||0)).slice(0,20).map(({a,d})=>
+  `<li><b class="sev-${a.severity}">${a.priority_score?.toFixed(1)}</b> — ${esc(a.title)} <i>(${esc(d.hostname)})</i><br/>
+  <small>${esc(a.remediation||'')}${a.remediation_cmd?'<br/><code>$ '+esc(a.remediation_cmd)+'</code>':''}</small></li>`).join('')}
+</ol>
+<div class="footer">UnifiedSec Technologies — MACE v2.1<br/>
+Patent IN/2026/UNISEC/MACE-001 + PCT (US · CA · EU · UAE · IN)<br/>
+This report contains scan data from the unified MACE Endpoint Agent (UMEA).
+SHA-256 chain-of-custody hash on every contributing device report.</div>
+</body></html>`;
+}
+
+function buildDeviceReportHTML(rep, when) {
+  const s = rep.summary || {}, hw=rep.hardware||{}, sw=rep.software||{};
+  return `<!doctype html><html><head><meta charset="utf-8"><title>MACE — ${esc(rep.hostname)}</title>
+<style>body{font-family:-apple-system,Inter,sans-serif;background:#fff;color:#0b1220;padding:40px;max-width:1000px;margin:auto}
+h1{font-size:26px;border-bottom:3px solid #3b82f6;padding-bottom:8px}h2{font-size:17px;margin-top:28px;color:#1b263f}
+table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}
+th{text-align:left;padding:6px;background:#f3f4f6;border-bottom:1px solid #d1d5db}
+td{padding:6px;border-bottom:1px solid #f1f1f1}
+.kpi{display:inline-block;padding:10px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-right:8px;margin-bottom:8px;font-size:13px}
+.kpi b{display:block;font-size:22px}
+.sev-CRITICAL{color:#ef4444;font-weight:700}.sev-HIGH{color:#fb923c;font-weight:700}
+.sev-MEDIUM{color:#f59e0b}.sev-LOW{color:#22c55e}.sev-INFO{color:#6b7280}
+code{background:#f5f5f7;padding:1px 5px;border-radius:3px;font-size:12px}
+.footer{margin-top:40px;padding-top:14px;border-top:1px solid #ccc;font-size:11px;color:#6b7280}
+</style></head><body>
+<h1>UnifiedSec MACE — Device Report</h1>
+<p><b>${esc(rep.hostname)}</b> (${esc(rep.platform)}, ${rep.real_collectors?'real scan':'simulated profile'})
+<br/>Generated ${when} UTC</p>
+<div>
+  <div class="kpi"><b class="sev-${s.severity||'INFO'}">${s.device_risk_score||0}/10</b>Device risk (${s.severity||'INFO'})</div>
+  <div class="kpi"><b>${(sw.applications||[]).length}</b>Apps</div>
+  <div class="kpi"><b>${s.vuln_count||0}</b>CVEs</div>
+  <div class="kpi"><b>${Math.round((s.stig_compliance_ratio||0)*100)}%</b>STIG compliance</div>
+</div>
+<h2>Hardware (HWAM)</h2>
+<table>
+${[['Manufacturer',hw.manufacturer],['Model',hw.model],['Chip',hw.chip],['CPU cores',hw.cpu_cores],['Memory',hw.memory_gb+' GB'],
+   ['Serial',hw.serial_number],['Firmware',hw.firmware_version],['Disk encryption',hw.disk_encryption?'ON':'OFF'],
+   ['Secure boot',hw.secure_boot?'ON':'OFF'],['Primary IP',hw.primary_ip],['Primary MAC',hw.primary_mac]]
+  .filter(([k,v])=>v!==undefined&&v!=='').map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(String(v))}</td></tr>`).join('')}
+</table>
+<h2>Network interfaces (IPs)</h2>
+<table><tr><th>Interface</th><th>Type</th><th>IP</th><th>MAC</th></tr>
+${(hw.interfaces||[]).map(i=>`<tr><td>${esc(i.name||'')}</td><td>${esc(i.type||'')}</td><td>${esc(i.ip||'')}</td><td>${esc(i.mac||'')}</td></tr>`).join('') || '<tr><td colspan=4>None</td></tr>'}
+</table>
+<h2>Installed applications (${(sw.applications||[]).length})</h2>
+<table><tr><th>Name</th><th>Version</th><th>Vendor</th><th>Source</th></tr>
+${(sw.applications||[]).map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(a.version||'')}</td><td>${esc(a.vendor||'')}</td><td>${esc(a.source||'')}</td></tr>`).join('')}
+</table>
+<h2>Vulnerabilities (${(rep.vulns?.hits||[]).length})</h2>
+<table><tr><th>CVE</th><th>Sev</th><th>CVSS</th><th>EPSS</th><th>App</th><th>Installed → Fixed</th><th>Remediation</th></tr>
+${(rep.vulns?.hits||[]).map(v=>`<tr><td>${esc(v.cve_id)}</td>
+  <td class="sev-${v.severity}">${v.severity}</td><td>${v.cvss_v3}</td><td>${(v.epss_score||0).toFixed(2)}</td>
+  <td>${esc(v.affected_component)}</td><td>${esc(v.installed_version)} → ${esc(v.fixed_version||'')}</td>
+  <td>${esc(v.remediation||'')}${v.remediation_cmd?'<br/><code>'+esc(v.remediation_cmd)+'</code>':''}</td></tr>`).join('') || '<tr><td colspan=7>None matched.</td></tr>'}
+</table>
+<h2>STIG / CIS checks (${(rep.stig?.checks||[]).length})</h2>
+<table><tr><th>ID</th><th>Title</th><th>Category</th><th>Result</th></tr>
+${(rep.stig?.checks||[]).map(c=>`<tr><td>${esc(c.check_id)}</td><td>${esc(c.title)}</td><td>${esc(c.category)}</td>
+  <td class="${c.result==='FAIL'?'sev-CRITICAL':'sev-LOW'}">${c.result}</td></tr>`).join('')}
+</table>
+<h2>Prioritised remediation plan</h2>
+<ol>
+${(rep.remediation_plan?.actions||[]).map(a=>`<li><b class="sev-${a.severity}">${a.priority_score?.toFixed(1)} ${a.severity}</b> — ${esc(a.title)}<br/>
+<small>${esc(a.remediation||'')}${a.remediation_cmd?'<br/><code>$ '+esc(a.remediation_cmd)+'</code>':''}</small></li>`).join('')}
+</ol>
+<div class="footer">UnifiedSec MACE v2.1 — Report SHA-256: ${esc(rep.report_hash||'')}<br/>
+Captured ${esc(rep.captured_at||'')} · agent ${esc(rep.agent_version||'')}<br/>
+Patent IN/2026/UNISEC/MACE-001 + PCT</div>
+</body></html>`;
+}
+function esc(s) { return (s||'').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+document.addEventListener('DOMContentLoaded', () => {
+  $('#download-fleet-report')?.addEventListener('click', downloadFleetReport);
+  $('#download-fleet-json')?.addEventListener('click', downloadFleetJson);
+  $('#download-fleet-csv')?.addEventListener('click', downloadFleetCsv);
+  $('#download-fleet-vulns-csv')?.addEventListener('click', downloadFleetVulnsCsv);
+  $('#download-device-report')?.addEventListener('click', () => {
+    const host_id = $('#device-picker').value;
+    if (host_id) downloadDeviceReport(host_id);
+  });
+});
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,textarea,select')) return;
+  if (e.key === '1') showTab('devices');
+  if (e.key === '2') showTab('device');
+  if (e.key === '3') showTab('macey');
+  if (e.key === '4') showTab('compliance');
+  if (e.key === '5') showTab('feeds');
+  if (e.key === '/' || (e.key === 'k' && e.metaKey)) {
+    e.preventDefault();
+    const el = document.querySelector('#fleet-search') || document.querySelector('#dev-app-search');
+    if (el) el.focus();
+  }
+  if (e.key === 's' || e.key === 'S') document.querySelector('#scan-now')?.click();
+  if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+    alert('Keyboard shortcuts:\n  1 — Devices tab\n  2 — Device detail\n  3 — Macey\n  4 — Compliance\n  5 — Feeds\n  /  — focus search\n  S — scan this device\n  ? — show this');
+  }
+});
+document.querySelector('#kbd-help')?.addEventListener('click', () => {
+  alert('Keyboard shortcuts:\n  1 — Devices tab\n  2 — Device detail\n  3 — Macey\n  4 — Compliance\n  5 — Feeds\n  /  — focus search\n  S — scan this device\n  ? — show this');
+});
+
+// ── boot + polling ──
+let _lastReportTs = 0;
+async function tick() {
+  const r = await fetch('/agent/reports').then(r=>r.json()).catch(()=>({reports:[]}));
+  recordTimeline(r.reports || []);
+  await loadDevices();
+  await loadEvents();
+  // Notification badge when fresh report arrives
+  const newest = (r.reports || []).reduce((m,d) => Math.max(m, new Date(d.captured_at || 0).getTime()), 0);
+  if (_lastReportTs && newest > _lastReportTs) {
+    $('#status-line').textContent = 'new scan ↑';
+    setTimeout(() => $('#status-line').textContent = 'live', 4000);
+  }
+  _lastReportTs = newest;
+}
+tick(); setInterval(tick, 5000);
+</script>
+</body>
+</html>

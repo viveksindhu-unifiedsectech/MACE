@@ -1,0 +1,5 @@
+apiVersion: v2
+name: celery-worker
+description: MACE Celery workers — connector sync, EPSS refresh, ACS decay
+version: 2.0.0
+appVersion: "2.0.0"

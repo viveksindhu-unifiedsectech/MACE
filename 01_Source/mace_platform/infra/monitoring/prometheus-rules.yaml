@@ -1,0 +1,173 @@
+##############################################################################
+# MACE Platform — Prometheus + Grafana Monitoring
+# Deployed via kube-prometheus-stack Helm chart
+# Custom dashboards for: CDCS scores, incident rates, connector health, SLA
+##############################################################################
+
+---
+# PrometheusRule — MACE Platform Alert Rules
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: mace-platform-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: mace.api
+      interval: 30s
+      rules:
+        - alert: MACEAPIDown
+          expr: up{job="mace-api"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: platform
+          annotations:
+            summary: "MACE API is down"
+            description: "MACE API pod {{ $labels.pod }} has been down for > 2 minutes"
+
+        - alert: MACEAPIHighErrorRate
+          expr: |
+            rate(http_requests_total{job="mace-api",status=~"5.."}[5m])
+            / rate(http_requests_total{job="mace-api"}[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "MACE API error rate > 5%"
+            description: "Error rate is {{ $value | humanizePercentage }}"
+
+        - alert: MACEAPIHighLatency
+          expr: |
+            histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="mace-api"}[5m])) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "MACE API p95 latency > 2s"
+
+        - alert: MACECorrelationQueueBacklog
+          expr: celery_queue_length{queue="default"} > 500
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Correlation queue backlog > 500"
+            description: "{{ $value }} tasks queued — check Celery workers"
+
+        - alert: MACESLABreachDetected
+          expr: increase(mace_sla_breaches_total[1h]) > 0
+          labels:
+            severity: critical
+            team: compliance
+          annotations:
+            summary: "MACE regulatory SLA breach detected"
+            description: "{{ $value }} new SLA breaches in the last hour"
+
+        - alert: MACECDCSHighAlertRate
+          expr: rate(mace_cdcs_alerts_total[15m]) > 10
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CDCS alert rate — possible attack or misconfiguration"
+
+    - name: mace.database
+      rules:
+        - alert: MACERDSHighConnections
+          expr: aws_rds_database_connections_average > 400
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "RDS connection count approaching limit"
+
+        - alert: MACERedisHighMemory
+          expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Redis memory usage > 85%"
+
+    - name: mace.connectors
+      rules:
+        - alert: MACEConnectorSyncFailed
+          expr: mace_connector_last_sync_status{status="error"} == 1
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Connector {{ $labels.connector }} sync failing"
+            description: "Last sync failed 30+ min ago"
+
+---
+# ServiceMonitor — scrape mace-api metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: mace-api
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: mace-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames: [mace]
+
+---
+# Grafana Dashboard ConfigMap — MACE Overview
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-mace
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  mace-overview.json: |
+    {
+      "title": "MACE Platform Overview",
+      "uid": "mace-overview",
+      "panels": [
+        {
+          "title": "API Request Rate",
+          "type": "stat",
+          "targets": [{"expr": "sum(rate(http_requests_total{job=\"mace-api\"}[5m]))"}]
+        },
+        {
+          "title": "CDCS Alerts / Hour",
+          "type": "stat",
+          "targets": [{"expr": "sum(increase(mace_cdcs_alerts_total[1h]))"}]
+        },
+        {
+          "title": "Open Incidents",
+          "type": "stat",
+          "targets": [{"expr": "mace_incidents_open_total"}]
+        },
+        {
+          "title": "SLA Compliance %",
+          "type": "gauge",
+          "fieldConfig": {"defaults": {"thresholds": {"steps": [{"value": 0, "color": "red"}, {"value": 95, "color": "yellow"}, {"value": 99, "color": "green"}]}}},
+          "targets": [{"expr": "(1 - mace_sla_breaches_total / mace_incidents_total) * 100"}]
+        },
+        {
+          "title": "Correlation Latency (p95)",
+          "type": "timeseries",
+          "targets": [{"expr": "histogram_quantile(0.95, rate(mace_correlation_duration_seconds_bucket[5m]))"}]
+        },
+        {
+          "title": "Assets by Class",
+          "type": "piechart",
+          "targets": [{"expr": "sum by (asset_class) (mace_assets_total)"}]
+        }
+      ]
+    }

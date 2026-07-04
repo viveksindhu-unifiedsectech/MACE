@@ -1,0 +1,52 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+
+# ── Secrets / env (NEVER commit) ──
+.env
+*.env
+!*.env.template
+!.env.cloud.template
+*.credentials.json
+admin.credentials.json
+
+# ── Node / frontends ──
+node_modules/
+dist/
+build/
+.vite/
+
+# ── Secure Files local store (encrypted blobs; do not commit) ──
+mace-secure-files/
+/tmp/mace-*/
+*.macef
+
+# ── OS / editor ──
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# ── Build artifacts / large binaries ──
+*.app/
+*-macos-arm64
+*.exe
+*.ipa
+*.apk
+
+# ── Terraform state ──
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# ── Locks / temp ──
+.~lock.*
+*.tmp
+lu*.tmp

@@ -1,0 +1,243 @@
+##############################################################################
+# MACE Platform — Full Local Development Stack
+#
+# Build context is the repo root (UnifiedSec_MACE_Complete/) so Dockerfiles
+# can reach both `mace_platform/` and `UnifiedSec_MACE_v2/` siblings.
+#
+# Usage (from repo root):
+#   docker compose -f mace_platform/infra/docker-compose.local.yml up -d --build
+# Or, equivalently, use the wrapper at repo root: docker compose up -d --build
+##############################################################################
+
+services:
+  # ── Infrastructure ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mace
+      POSTGRES_PASSWORD: mace_dev_password_change_in_prod
+      POSTGRES_DB: mace_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mace -d mace_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass mace_redis_dev
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "mace_redis_dev", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── DB schema bootstrap — runs once, then exits ──────────────────────────
+  # Dev path: create_all from the live SQLAlchemy models so schema always
+  # matches the code. Production path: switch this back to `alembic upgrade head`
+  # so schema changes are versioned and reversible.
+  mace-migrate:
+    build:
+      context: ../..
+      dockerfile: mace_platform/backend/Dockerfile
+    command: python -m scripts.init_db
+    environment: &api_env
+      DATABASE_URL: postgresql+asyncpg://mace:mace_dev_password_change_in_prod@postgres:5432/mace_platform
+      REDIS_URL: redis://:mace_redis_dev@redis:6379/0
+      CELERY_BROKER_URL: redis://:mace_redis_dev@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:mace_redis_dev@redis:6379/2
+      SECRET_KEY: dev-secret-key-minimum-64-chars-change-in-production-absolutely-yes
+      DEBUG: "true"
+      ENVIRONMENT: development
+      DEPLOYMENT_REGION: us-east-1
+      DATA_RESIDENCY_JURISDICTION: US
+      MACE_CDCS_ALERT_THRESHOLD: "7.0"
+      MACE_REA_CDCS_THRESHOLD: "6.5"
+      MACE_CORE_PATH: /app
+      PYTHONPATH: /app
+      # ── Secure Files (envelope encryption + AI guard + audit search) ──
+      # Local/demo defaults need no AWS. To go cloud, set these via a .env
+      # file next to this compose (see backend/.env.cloud.template):
+      # MACE_KMS_ENABLED=true, S3_BUCKET, MACE_KMS_KEY_ID, AWS keys.
+      MACE_KMS_ENABLED: "${MACE_KMS_ENABLED:-false}"
+      MACE_KMS_KEY_ID: "${MACE_KMS_KEY_ID:-}"
+      S3_BUCKET: "${S3_BUCKET:-}"
+      S3_REGION: "${S3_REGION:-us-east-1}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      MACE_FILE_STORE: /data/secure-files
+      MACE_REDACT_BY_DEFAULT: "${MACE_REDACT_BY_DEFAULT:-false}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      ELASTIC_ENABLED: "${ELASTIC_ENABLED:-true}"
+      ELASTIC_URL: http://elasticsearch:9200
+      ELASTIC_AUDIT_INDEX: mace-secure-file-audit
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ── MACE API ───────────────────────────────────────────────────────────────
+  mace-api:
+    build:
+      context: ../..
+      dockerfile: mace_platform/backend/Dockerfile
+    ports:
+      - "8080:8080"
+    environment: *api_env
+    volumes:
+      # Persist encrypted file blobs in local/demo mode (ignored when S3 is set).
+      - securefiles_data:/data/secure-files
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mace-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # ── Celery Workers ─────────────────────────────────────────────────────────
+  celery-worker:
+    build:
+      context: ../..
+      dockerfile: mace_platform/backend/Dockerfile
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2 -Q default,connectors,compliance
+    environment: *api_env
+    depends_on:
+      mace-api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  celery-beat:
+    build:
+      context: ../..
+      dockerfile: mace_platform/backend/Dockerfile
+    command: celery -A app.workers.celery_app beat --loglevel=info
+    environment: *api_env
+    depends_on:
+      redis:
+        condition: service_healthy
+      mace-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  flower:
+    image: mher/flower:latest
+    ports:
+      - "5555:5555"
+    environment:
+      CELERY_BROKER_URL: redis://:mace_redis_dev@redis:6379/1
+      FLOWER_BASIC_AUTH: admin:mace_flower_dev
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Frontends ──────────────────────────────────────────────────────────────
+  soc-frontend:
+    build:
+      context: ../frontend/soc
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+    ports:
+      - "3000:80"
+    depends_on:
+      - mace-api
+
+  admin-frontend:
+    build:
+      context: ../frontend/admin
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+    ports:
+      - "3001:80"
+    depends_on:
+      - mace-api
+
+  # ── Monitoring ─────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--storage.tsdb.retention.time=15d'
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3003:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: mace_grafana_dev
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: mace_pgadmin_dev
+    depends_on:
+      - postgres
+
+  # ── Elasticsearch + Kibana — encrypted-file audit search ───────────────────
+  # Searchable index of every file access / grant / denial. Self-hosted here at
+  # $0; swap for Elastic Cloud by setting ELASTIC_URL + credentials in .env.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"     # demo only; enable + TLS in production
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  elastic_data:
+  securefiles_data:
+
+networks:
+  default:
+    name: mace-network

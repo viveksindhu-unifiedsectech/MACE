@@ -1,0 +1,381 @@
+##############################################################################
+# UnifiedSec MACE Platform — GitHub Actions CI/CD
+# Triggers: push to main → deploy to US. Tags → deploy to all regions.
+#
+# Stages:
+#   1. test       — pytest + algorithm tests (67/67)
+#   2. security   — tfsec, Checkov, Trivy image scan, Gitleaks secret scan
+#   3. build      — Docker multi-arch build + push to ECR
+#   4. deploy-us  — Helm upgrade to US EKS (always on main)
+#   5. deploy-uae — Helm upgrade to UAE EKS (on release tags)
+#   6. deploy-eu  — Helm upgrade to EU EKS (on release tags)
+#   7. deploy-in  — Helm upgrade to India EKS (on release tags)
+##############################################################################
+
+name: MACE Platform CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*.*.*']
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Stage 1: Run all tests
+  # ─────────────────────────────────────────────────────────────────────────
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Python deps
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio pytest-cov httpx
+
+      - name: Run MACE Algorithm Tests (67/67)
+        run: |
+          cd UnifiedSec_MACE_v2
+          python -m pytest tests/ -v --tb=short
+        env:
+          PYTHONPATH: .
+
+      - name: Run Backend Unit Tests
+        run: |
+          cd backend
+          python tests/test_backend.py
+        env:
+          PYTHONPATH: /home/runner/work/mace/mace/UnifiedSec_MACE_v2
+
+      - name: Run Pipeline Integration Tests
+        run: |
+          cd mace_platform
+          python pipeline/tests/test_session4.py
+        env:
+          PYTHONPATH: /home/runner/work/mace/mace/UnifiedSec_MACE_v2:.
+
+      - name: Frontend Type Check — SOC Dashboard
+        working-directory: frontend/soc
+        run: |
+          npm ci
+          npm run type-check
+
+      - name: Frontend Type Check — Admin Portal
+        working-directory: frontend/admin
+        run: |
+          npm ci
+          npm run type-check
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Stage 2: Security scanning
+  # ─────────────────────────────────────────────────────────────────────────
+  security:
+    name: Security Scans
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gitleaks — secret detection
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Trivy — filesystem vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: 1
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Checkov — IaC security scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infra/terraform
+          framework: terraform
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          soft_fail: false
+          skip_check: CKV_AWS_18,CKV_AWS_19  # Known accepted exceptions
+
+      - name: tfsec — Terraform security analysis
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          working_directory: infra/terraform
+          format: sarif
+          soft_fail: false
+
+      - name: pip-audit — Python dependency vulnerabilities
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt --format json -o pip-audit.json
+          cat pip-audit.json
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Stage 3: Build and push Docker images
+  # ─────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (US)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_US }}
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.ecr-login.outputs.registry }}/mace-api
+          tags: |
+            type=sha,prefix=
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push mace-api
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            DEPLOYMENT_REGION=us-east-1
+            DATA_RESIDENCY_JURISDICTION=US
+
+      - name: Build and push soc-frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: frontend/soc
+          push: true
+          tags: ${{ steps.ecr-login.outputs.registry }}/mace-soc-frontend:${{ github.sha }}
+          build-args: |
+            VITE_API_URL=/api/v1
+
+      - name: Build and push admin-frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: frontend/admin
+          push: true
+          tags: ${{ steps.ecr-login.outputs.registry }}/mace-admin-frontend:${{ github.sha }}
+
+      - name: Post-build Trivy scan (container image)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.ecr-login.outputs.registry }}/mace-api:${{ github.sha }}
+          format: table
+          exit-code: 1
+          severity: CRITICAL
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Stage 4: Deploy to US (main branch)
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-us:
+    name: Deploy → US (us-east-1)
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: production-us
+      url: https://app.unifiedsec.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS — US
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_US }}
+          aws-region: us-east-1
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name mace-us-prod-eks --region us-east-1
+
+      - name: Run database migrations
+        run: |
+          kubectl run alembic-migrate-${{ github.sha }} \
+            --image=${{ secrets.ECR_REGISTRY }}/mace-api:${{ github.sha }} \
+            --restart=Never \
+            --env-from=secret/mace-api-secrets \
+            -- alembic upgrade head
+          kubectl wait --for=condition=complete job/alembic-migrate-${{ github.sha }} --timeout=120s || true
+
+      - name: Helm upgrade — mace-api
+        run: |
+          helm upgrade --install mace-api infra/helm/mace-api \
+            --namespace mace \
+            --create-namespace \
+            --set image.repository=${{ secrets.ECR_REGISTRY }}/mace-api \
+            --set image.tag=${{ github.sha }} \
+            --set ingress.annotations."alb\.ingress\.kubernetes\.io/certificate-arn"=${{ secrets.ACM_CERT_ARN_US }} \
+            --set ingress.annotations."alb\.ingress\.kubernetes\.io/wafv2-acl-arn"=${{ secrets.WAF_ARN_US }} \
+            --set env.DEPLOYMENT_REGION=us-east-1 \
+            --set env.DATA_RESIDENCY_JURISDICTION=US \
+            --wait --timeout 10m
+
+      - name: Helm upgrade — celery-worker
+        run: |
+          helm upgrade --install celery-worker infra/helm/celery-worker \
+            --namespace mace \
+            --set worker.image.repository=${{ secrets.ECR_REGISTRY }}/mace-api \
+            --set worker.image.tag=${{ github.sha }} \
+            --set beat.image.repository=${{ secrets.ECR_REGISTRY }}/mace-api \
+            --set beat.image.tag=${{ github.sha }} \
+            --wait --timeout 10m
+
+      - name: Helm upgrade — soc-frontend
+        run: |
+          helm upgrade --install soc-frontend infra/helm/soc-frontend \
+            --namespace mace \
+            --set image.repository=${{ secrets.ECR_REGISTRY }}/mace-soc-frontend \
+            --set image.tag=${{ github.sha }} \
+            --wait --timeout 5m
+
+      - name: Helm upgrade — admin-frontend
+        run: |
+          helm upgrade --install admin-frontend infra/helm/admin-frontend \
+            --namespace mace \
+            --set image.repository=${{ secrets.ECR_REGISTRY }}/mace-admin-frontend \
+            --set image.tag=${{ github.sha }} \
+            --wait --timeout 5m
+
+      - name: Smoke test
+        run: |
+          sleep 30
+          curl -f https://api.unifiedsec.com/health | jq .
+          echo "✅ US deployment healthy"
+
+      - name: Notify Slack on success
+        if: success()
+        run: |
+          curl -X POST ${{ secrets.SLACK_DEPLOY_WEBHOOK }} \
+            -H 'Content-type: application/json' \
+            --data '{"text":"✅ MACE v2 deployed to US (us-east-1) — `${{ github.sha }}`"}'
+
+      - name: Notify Slack on failure
+        if: failure()
+        run: |
+          curl -X POST ${{ secrets.SLACK_DEPLOY_WEBHOOK }} \
+            -H 'Content-type: application/json' \
+            --data '{"text":"❌ MACE US deployment FAILED — `${{ github.sha }}` — check GitHub Actions"}'
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Stage 5–7: Multi-region deploy (release tags only)
+  # ─────────────────────────────────────────────────────────────────────────
+  deploy-uae:
+    name: Deploy → UAE (me-central-1)
+    runs-on: ubuntu-latest
+    needs: deploy-us
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: production-uae
+      url: https://ae.unifiedsec.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_UAE }}
+          aws-region: me-central-1
+      - run: aws eks update-kubeconfig --name mace-uae-prod-eks --region me-central-1
+      - name: Helm deploy UAE
+        run: |
+          helm upgrade --install mace-api infra/helm/mace-api \
+            --namespace mace --create-namespace \
+            --set image.repository=${{ secrets.ECR_REGISTRY_UAE }}/mace-api \
+            --set image.tag=${{ github.sha }} \
+            --set env.DEPLOYMENT_REGION=me-central-1 \
+            --set env.DATA_RESIDENCY_JURISDICTION=AE \
+            --wait --timeout 10m
+          echo "✅ UAE deployment complete"
+
+  deploy-eu:
+    name: Deploy → EU (eu-west-1)
+    runs-on: ubuntu-latest
+    needs: deploy-us
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: production-eu
+      url: https://eu.unifiedsec.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_EU }}
+          aws-region: eu-west-1
+      - run: aws eks update-kubeconfig --name mace-eu-prod-eks --region eu-west-1
+      - name: Helm deploy EU
+        run: |
+          helm upgrade --install mace-api infra/helm/mace-api \
+            --namespace mace --create-namespace \
+            --set image.repository=${{ secrets.ECR_REGISTRY_EU }}/mace-api \
+            --set image.tag=${{ github.sha }} \
+            --set env.DEPLOYMENT_REGION=eu-west-1 \
+            --set env.DATA_RESIDENCY_JURISDICTION=EU \
+            --wait --timeout 10m
+          echo "✅ EU deployment complete"
+
+  deploy-india:
+    name: Deploy → India (ap-south-1)
+    runs-on: ubuntu-latest
+    needs: deploy-us
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: production-india
+      url: https://in.unifiedsec.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_IN }}
+          aws-region: ap-south-1
+      - run: aws eks update-kubeconfig --name mace-india-prod-eks --region ap-south-1
+      - name: Helm deploy India
+        run: |
+          helm upgrade --install mace-api infra/helm/mace-api \
+            --namespace mace --create-namespace \
+            --set image.repository=${{ secrets.ECR_REGISTRY_IN }}/mace-api \
+            --set image.tag=${{ github.sha }} \
+            --set env.DEPLOYMENT_REGION=ap-south-1 \
+            --set env.DATA_RESIDENCY_JURISDICTION=IN \
+            --wait --timeout 10m
+          echo "✅ India deployment complete"

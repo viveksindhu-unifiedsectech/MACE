@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer utilities {
+  .adm-card { @apply bg-adm-card border border-adm-border rounded-xl; }
+  .adm-input { @apply w-full bg-adm-bg border border-adm-border rounded-lg px-3 py-2 text-sm text-white placeholder-adm-muted focus:outline-none focus:border-indigo-500/50; }
+  .adm-btn-primary { @apply bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2 rounded-lg text-sm transition-colors disabled:opacity-50; }
+  .adm-btn-ghost { @apply bg-adm-card hover:bg-adm-surface border border-adm-border text-adm-text px-4 py-2 rounded-lg text-sm transition-colors; }
+  .adm-btn-danger { @apply bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/25 px-4 py-2 rounded-lg text-sm transition-colors; }
+  .adm-label { @apply text-xs text-adm-muted uppercase tracking-wider block mb-1.5; }
+  .adm-bg { background: #060810; }
+}

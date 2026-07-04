@@ -1,0 +1,54 @@
+# Core framework
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+pydantic==2.7.1
+pydantic-settings==2.2.1
+
+# Database
+sqlalchemy==2.0.30
+asyncpg==0.29.0
+alembic==1.13.1
+
+# Cache / Queue
+redis==5.0.4
+celery==5.4.0
+flower==2.0.1
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+# passlib 1.7.4 probes the bcrypt backend with a >72-byte test string;
+# bcrypt 4.1+ rejects that and breaks all hashing. Pin to a compatible version.
+bcrypt==3.2.2
+
+# HTTP client (for connectors, EPSS)
+httpx==0.27.0
+
+# Stripe billing
+stripe==9.9.0
+
+# Email
+aiosmtplib==3.0.1
+
+# Monitoring
+prometheus-fastapi-instrumentator==7.0.0
+
+# Testing
+pytest==8.2.0
+pytest-asyncio==0.23.7
+httpx==0.27.0
+hypothesis==6.156.1     # property-based tests for secure-files crypto + access matrix
+
+# Security
+cryptography==42.0.7
+
+# AWS (secure-files: KMS envelope encryption + S3 storage). Optional for local/demo.
+boto3==1.34.100
+
+# Utilities
+python-multipart==0.0.9
+python-dotenv==1.0.1
+
+# Auth extensions
+pyotp==2.9.0
+google-auth==2.29.0

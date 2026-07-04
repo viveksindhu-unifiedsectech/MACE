@@ -1,0 +1,43 @@
+## Celery Worker Helm Values
+## Workers run on spot instances — tolerates interruption (tasks retry)
+
+worker:
+  replicaCount: 3
+  concurrency: 4
+  queues: "default,connectors,epss,compliance"
+  image:
+    repository: ""
+    tag: "latest"
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits:   { cpu: 2000m, memory: 4Gi }
+  nodeSelector:
+    workload-type: spot
+  tolerations:
+    - key: "spot"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+beat:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ""
+    tag: "latest"
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+flower:
+  enabled: true
+  replicaCount: 1
+  port: 5555
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 30
+  targetCPUUtilizationPercentage: 60

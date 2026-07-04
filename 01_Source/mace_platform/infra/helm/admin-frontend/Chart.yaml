@@ -1,0 +1,6 @@
+apiVersion: v2
+name: admin-frontend
+description: UnifiedSec MACE Admin Portal - React 18 TypeScript indigo admin portal
+type: application
+version: 2.0.0
+appVersion: "2.0.0"

@@ -1,0 +1,10 @@
+# NOTE: This file is kept only for backward compatibility with older docs.
+# The canonical local-development stack lives at:
+#   mace_platform/infra/docker-compose.local.yml
+#
+# Run from the repo root:
+#   docker compose up -d --build
+# or from this directory:
+#   docker compose -f ../infra/docker-compose.local.yml up -d --build
+include:
+  - ../infra/docker-compose.local.yml

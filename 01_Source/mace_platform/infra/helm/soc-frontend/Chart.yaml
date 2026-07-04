@@ -1,0 +1,6 @@
+apiVersion: v2
+name: soc-frontend
+description: UnifiedSec MACE SOC Dashboard - React 18 TypeScript dark-theme SPA
+type: application
+version: 2.0.0
+appVersion: "2.0.0"
